@@ -347,6 +347,7 @@ export class WebChannel {
     const threadId = messages[messages.length - 1].timestamp;
     let thoughtBuffer = "";
     let draftBuffer = "";
+    const toolTitles = new Map<string, string>();
 
     const extractToolArgs = (args: unknown): Record<string, unknown> | null => {
       if (!args) return null;
@@ -408,6 +409,16 @@ export class WebChannel {
       return `${toolName}: ${clipped}`;
     };
 
+    const rememberToolTitle = (toolCallId: string, toolName: string, args: unknown): string => {
+      const title = formatToolTitle(toolName, args);
+      toolTitles.set(toolCallId, title);
+      return title;
+    };
+
+    const lookupToolTitle = (toolCallId: string, toolName: string, args?: unknown): string => {
+      return toolTitles.get(toolCallId) ?? formatToolTitle(toolName, args);
+    };
+
     this.broadcastEvent("agent_status", {
       thread_id: threadId,
       agent_id: agentId,
@@ -439,11 +450,16 @@ export class WebChannel {
             });
           }
           if (messageEvent.type === "toolcall_end") {
+            const title = rememberToolTitle(
+              messageEvent.toolCall.id,
+              messageEvent.toolCall.name,
+              messageEvent.toolCall.arguments
+            );
             this.broadcastEvent("agent_status", {
               thread_id: threadId,
               agent_id: agentId,
               type: "tool_call",
-              title: formatToolTitle(messageEvent.toolCall.name, messageEvent.toolCall.arguments),
+              title,
             });
           }
           if (messageEvent.type === "text_start") {
@@ -469,30 +485,34 @@ export class WebChannel {
         }
 
         if (event.type === "tool_execution_start") {
+          const title = rememberToolTitle(event.toolCallId, event.toolName, event.args);
           this.broadcastEvent("agent_status", {
             thread_id: threadId,
             agent_id: agentId,
             type: "tool_call",
-            title: formatToolTitle(event.toolName, event.args),
+            title,
           });
         }
 
         if (event.type === "tool_execution_update") {
+          const title = lookupToolTitle(event.toolCallId, event.toolName, event.args);
           this.broadcastEvent("agent_status", {
             thread_id: threadId,
             agent_id: agentId,
             type: "tool_status",
-            title: formatToolTitle(event.toolName, event.args),
+            title,
             status: "Working...",
           });
         }
 
         if (event.type === "tool_execution_end") {
+          const title = lookupToolTitle(event.toolCallId, event.toolName, event.args);
+          toolTitles.delete(event.toolCallId);
           this.broadcastEvent("agent_status", {
             thread_id: threadId,
             agent_id: agentId,
             type: "tool_status",
-            title: formatToolTitle(event.toolName, event.args),
+            title,
             status: event.isError ? "Failed" : "Done",
           });
         }
