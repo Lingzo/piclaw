@@ -10,6 +10,37 @@ import { startSchedulerLoop } from "./task-scheduler.js";
 import { WhatsAppChannel } from "./channels/whatsapp.js";
 import { WebChannel } from "./channels/web.js";
 import { formatMessages, formatOutbound } from "./router.js";
+const HELP_TEXT = `piclaw - Pi Coding Agent Assistant
+
+Usage:
+  piclaw [options]
+
+Options:
+  -h, --help     Show this help
+  -v, --version  Show version
+`;
+function getVersion() {
+    try {
+        const packagePath = join(import.meta.dir, "..", "package.json");
+        const data = JSON.parse(readFileSync(packagePath, "utf-8"));
+        return data.version || "unknown";
+    }
+    catch {
+        return "unknown";
+    }
+}
+function handleCliOptions() {
+    const args = process.argv.slice(2);
+    if (args.includes("-h") || args.includes("--help")) {
+        console.log(HELP_TEXT.trim());
+        process.exit(0);
+    }
+    if (args.includes("-v") || args.includes("--version")) {
+        console.log(getVersion());
+        process.exit(0);
+    }
+}
+handleCliOptions();
 let lastTimestamp = "";
 let lastAgentTimestamp = {};
 const queue = new AgentQueue();
