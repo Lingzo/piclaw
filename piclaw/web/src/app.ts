@@ -1335,6 +1335,15 @@ function App() {
         const sse = new SSEClient(
             (eventType, data) => {
                 // Handle agent status updates
+                if (eventType === 'connected') {
+                    setAgentStatus(null);
+                    setAgentDraft('');
+                    setAgentPlan('');
+                    setAgentThought('');
+                    setPendingRequest(null);
+                    return;
+                }
+
                 if (eventType === 'agent_status') {
                     console.log('Agent status:', data);
                     if (data.type === 'done' || data.type === 'error') {
