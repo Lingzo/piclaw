@@ -213,6 +213,8 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
 const dataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
 
 const summaryLines = [
+  `![token-chart](${dataUrl})`,
+  "",
   `Token usage (all chats) — last ${targetDays} days, total ${sumValue.toLocaleString()}`,
   `Input ${sumInput.toLocaleString()} • Output ${sumOutput.toLocaleString()} • Cache read ${sumCacheRead.toLocaleString()} • Cache write ${sumCacheWrite.toLocaleString()} (${cachedPct}% cached)`,
   ...dayDates.map((d, i) => {
@@ -222,8 +224,6 @@ const summaryLines = [
     const uncached = Math.max(total - cached, 0);
     return `• ${labelLong(d)}: ${total.toLocaleString()} tokens (cached ${cached.toLocaleString()}, uncached ${uncached.toLocaleString()})`;
   }),
-  "",
-  `![token-chart](${dataUrl})`,
 ];
 
 process.stdout.write(summaryLines.join("\n"));
