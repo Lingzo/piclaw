@@ -20,11 +20,6 @@ import {
     isIOSDevice,
     useTimestampRefresh,
 } from './ui/app-helpers.js';
-import {
-    readAgentTurnId,
-    resolveAgentPreviewRestoreState,
-    shouldKeepExistingPreview,
-} from './ui/app-agent-status-refresh.js';
 import { handleAgentPanelToggle } from './ui/app-agent-panel-toggle.js';
 import { resolveFilePillOpenAction } from './ui/file-pill-open.js';
 import { parseBtwCommand, buildBtwInjectionText, resolveBtwChatJid } from './ui/btw.js';
@@ -122,6 +117,11 @@ import {
     refreshQueueStateForChat,
 } from './ui/app-status-refresh-orchestration.js';
 import { handleAppSseEvent } from './ui/app-sse-events.js';
+import {
+    reconcileSilentTurn as reconcileSilentTurnState,
+    refreshAgentStatusForChat,
+    runSilenceWatchdogTick,
+} from './ui/app-agent-status-orchestration.js';
 import {
     applyStoredSidebarWidth,
     runTimelineLoadFlow,
@@ -1144,127 +1144,60 @@ function MainApp({ locationParams, navigate }) {
     }, [currentChatJid]);
 
     const refreshAgentStatus = useCallback(async () => {
-        const targetChatJid = currentChatJid;
-        try {
-            const res = await getAgentStatus(targetChatJid);
-            if (activeChatJidRef.current !== targetChatJid) return null;
-            if (!res || res.status !== 'active' || !res.data) {
-                // If the agent just transitioned active → idle, refresh the timeline
-                // to catch any final response that arrived while SSE was gapped.
-                if (wasAgentActiveRef.current) {
-                    const { currentHashtag: ah, searchQuery: sq, searchOpen: so } = viewStateRef.current || {};
-                    if (!ah && !sq && !so) refreshTimeline();
-                }
-                wasAgentActiveRef.current = false;
-                clearAgentRunState();
-                agentStatusRef.current = null;
-                setAgentStatus(null);
-                setAgentDraft({ text: '', totalLines: 0 });
-                setAgentPlan('');
-                setAgentThought({ text: '', totalLines: 0 });
-                setPendingRequest(null);
-                pendingRequestRef.current = null;
-                return res ?? null;
-            }
-            wasAgentActiveRef.current = true;
-            const payload = res.data;
-            agentStatusRef.current = payload;
-            const activeTurn = readAgentTurnId(payload);
-            if (activeTurn) setActiveTurn(activeTurn);
-            noteAgentActivity({ running: true, clearSilence: true });
-            clearLastActivityFlag();
-            setAgentStatus(payload);
-
-            // Restore draft/thought buffers if the server has them and the
-            // client doesn't (e.g. after reconnect or SSE gap).
-            const thoughtRestore = resolveAgentPreviewRestoreState(res.thought);
-            if (thoughtRestore) {
-                setAgentThought((prev) => {
-                    if (shouldKeepExistingPreview(prev, thoughtRestore.text)) return prev;
-                    thoughtBufferRef.current = thoughtRestore.text;
-                    return thoughtRestore;
-                });
-            }
-            const draftRestore = resolveAgentPreviewRestoreState(res.draft);
-            if (draftRestore) {
-                setAgentDraft((prev) => {
-                    if (shouldKeepExistingPreview(prev, draftRestore.text)) return prev;
-                    draftBufferRef.current = draftRestore.text;
-                    return draftRestore;
-                });
-            }
-            return res;
-        } catch (err) {
-            console.warn('Failed to fetch agent status:', err);
-            return null;
-        }
-    }, [clearAgentRunState, clearLastActivityFlag, noteAgentActivity, refreshTimeline, setActiveTurn]);
+        return await refreshAgentStatusForChat({
+            currentChatJid,
+            getAgentStatus,
+            activeChatJidRef,
+            wasAgentActiveRef,
+            viewStateRef,
+            refreshTimeline,
+            clearAgentRunState,
+            agentStatusRef,
+            pendingRequestRef,
+            thoughtBufferRef,
+            draftBufferRef,
+            setAgentStatus,
+            setAgentDraft,
+            setAgentPlan,
+            setAgentThought,
+            setPendingRequest,
+            setActiveTurn,
+            noteAgentActivity,
+            clearLastActivityFlag,
+        });
+    }, [clearAgentRunState, clearLastActivityFlag, currentChatJid, noteAgentActivity, refreshTimeline, setActiveTurn]);
 
     const reconcileSilentTurn = useCallback(async () => {
-        if (!isAgentRunningRef.current) return null;
-        if (pendingRequestRef.current) return null;
-
-        const activeTurnId = currentTurnIdRef.current || null;
-        const probe = silentRecoveryRef.current;
-        const now = Date.now();
-        if (probe.inFlight) return null;
-        if (probe.turnId === activeTurnId && now - probe.lastAttemptAt < SILENCE_REFRESH_MS) {
-            return null;
-        }
-
-        probe.inFlight = true;
-        probe.lastAttemptAt = now;
-        probe.turnId = activeTurnId;
-
-        try {
-            const { currentHashtag: activeHashtag, searchQuery: activeSearch, searchOpen: activeSearchOpen } = viewStateRef.current || {};
-            if (!activeHashtag && !activeSearch && !activeSearchOpen) {
-                await refreshTimeline();
-            }
-            await refreshQueueState();
-            return await refreshAgentStatus();
-        } finally {
-            probe.inFlight = false;
-        }
+        return await reconcileSilentTurnState({
+            isAgentRunningRef,
+            pendingRequestRef,
+            currentTurnIdRef,
+            silentRecoveryRef,
+            silenceRefreshMs: SILENCE_REFRESH_MS,
+            viewStateRef,
+            refreshTimeline,
+            refreshQueueState,
+            refreshAgentStatus,
+        });
     }, [refreshAgentStatus, refreshQueueState, refreshTimeline]);
 
     // Silence watchdog: detect stream quiet periods and trigger server re-sync.
     useEffect(() => {
         const intervalMs = Math.min(1000, Math.max(100, Math.floor(SILENCE_WARNING_MS / 2)));
         const interval = setInterval(() => {
-            if (!isAgentRunningRef.current) return;
-            if (pendingRequestRef.current) return;
-            const lastEvent = lastAgentEventRef.current;
-            if (!lastEvent) return;
-            const now = Date.now();
-            const silenceMs = now - lastEvent;
-
-            const compactionActive = isCompactionStatus(agentStatusRef.current);
-
-            if (silenceMs >= SILENCE_FINALIZE_MS) {
-                if (!compactionActive) {
-                    setAgentStatus({
-                        type: 'waiting',
-                        title: 'Re-syncing after a quiet period…',
-                    });
-                }
-                void reconcileSilentTurn();
-                return;
-            }
-
-            if (silenceMs >= SILENCE_WARNING_MS) {
-                if (now - lastSilenceNoticeRef.current >= SILENCE_REFRESH_MS) {
-                    if (!compactionActive) {
-                        const seconds = Math.floor(silenceMs / 1000);
-                        setAgentStatus({
-                            type: 'waiting',
-                            title: `Waiting for model… No events for ${seconds}s`,
-                        });
-                    }
-                    lastSilenceNoticeRef.current = now;
-                    void reconcileSilentTurn();
-                }
-            }
+            runSilenceWatchdogTick({
+                isAgentRunningRef,
+                pendingRequestRef,
+                lastAgentEventRef,
+                lastSilenceNoticeRef,
+                agentStatusRef,
+                silenceWarningMs: SILENCE_WARNING_MS,
+                silenceFinalizeMs: SILENCE_FINALIZE_MS,
+                silenceRefreshMs: SILENCE_REFRESH_MS,
+                isCompactionStatus,
+                setAgentStatus,
+                reconcileSilentTurn,
+            });
         }, intervalMs);
 
         return () => clearInterval(interval);
