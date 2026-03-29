@@ -226,6 +226,7 @@ export class UiBridge {
       },
       getToolsExpanded: () => false,
       setToolsExpanded: () => {},
+      setHiddenThinkingLabel: () => {},
     };
   }
 

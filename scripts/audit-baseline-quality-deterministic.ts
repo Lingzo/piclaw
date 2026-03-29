@@ -341,6 +341,7 @@ const groupDefinitions: GroupDefinition[] = [
           "optional-api.test.ts",
           "popup-typeahead.test.ts",
           "queue-state.test.ts",
+          "status-dot.test.ts",
           "status-duration.test.ts",
           "tab-source-editor.test.ts",
           "tab-store.test.ts",
