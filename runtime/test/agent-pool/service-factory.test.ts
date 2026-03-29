@@ -13,7 +13,7 @@ test("createAgentPoolServices wires the extracted helper services together", () 
   const sidePool = new Map();
   const activeForkBaseLeafByChat = new Map();
   const authStorage = AuthStorage.create();
-  const modelRegistry = new ModelRegistry(authStorage);
+  const modelRegistry = ModelRegistry.inMemory(authStorage);
   const settingsManager = createSettingsManager();
 
   const services = createAgentPoolServices({
