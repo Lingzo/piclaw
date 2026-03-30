@@ -83,6 +83,9 @@ function getAuthStorage(session, modelRegistry) {
 function getModelRegistry(session, modelRegistry) {
     return (session.modelRegistry ?? modelRegistry);
 }
+function refreshModelRegistry(registry) {
+    registry.refresh?.();
+}
 function getProviderStatuses(authStorage) {
     return PROVIDER_DEFS.map((def) => {
         const cred = authStorage.get(def.id);
@@ -440,6 +443,7 @@ async function handleStep2(session, authStorage, modelRegistry, registry, data) 
         backupFile(getAuthJsonPath());
         authStorage.set(providerId, { type: "api_key", key: apiKey });
         authStorage.reload();
+        refreshModelRegistry(registry);
         // Show Card 3 with models for this provider, or activate directly when only one exists.
         return await showCard3OrComplete(session, modelRegistry, def, providerId, name, registry);
     }
@@ -454,6 +458,7 @@ async function handleStep2(session, authStorage, modelRegistry, registry, data) 
             }
         }
         authStorage.reload();
+        refreshModelRegistry(registry);
         const cred = authStorage.get(providerId);
         if (cred?.type === "oauth") {
             return await showCard3OrComplete(session, modelRegistry, def, providerId, name, registry);
@@ -494,6 +499,7 @@ async function handleStep2(session, authStorage, modelRegistry, registry, data) 
             authStorage.set(providerId, undefined);
             authStorage.reload();
         }
+        refreshModelRegistry(registry);
         if (def?.isCustom) {
             const modelsJson = readJsonFile(getModelsJsonPath());
             if (modelsJson.providers?.[providerId]) {

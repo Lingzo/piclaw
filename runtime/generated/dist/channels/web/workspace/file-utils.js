@@ -45,6 +45,8 @@ export function contentTypeForPath(filePath) {
             return "text/tab-separated-values";
         case ".pdf":
             return "application/pdf";
+        case ".zip":
+            return "application/zip";
         case ".docx":
             return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
         case ".xlsx":
