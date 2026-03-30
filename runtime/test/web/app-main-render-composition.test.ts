@@ -86,6 +86,8 @@ test('composeRenderedMainAppOptions builds final shell options from grouped app 
       currentBranchRecord: null,
       currentChatBranches: [],
       activeSearchScopeLabel: 'Current branch',
+      currentHashtag: 'tag',
+      searchQuery: 'hello',
       timelineRef: { current: null },
       agents: {},
       userProfile: { name: 'You' },
@@ -153,5 +155,11 @@ test('composeRenderedMainAppOptions builds final shell options from grouped app 
   expect(result.mainShellOptions.workspaceOpen).toBe(true);
   expect(result.mainShellOptions.connectionStatus).toBe('connected');
   expect(result.mainShellOptions.steerQueued).toBe(true);
+  expect(result.mainShellOptions.currentHashtag).toBe('tag');
+  expect(result.mainShellOptions.searchQuery).toBe('hello');
+  expect(typeof result.mainShellOptions.openEditor).toBe('function');
+  expect(typeof result.mainShellOptions.openTerminalTab).toBe('function');
+  expect(typeof result.mainShellOptions.openVncTab).toBe('function');
+  expect(typeof result.mainShellOptions.handleToggleNotifications).toBe('function');
   expect(result.mainShellOptions.TERMINAL_TAB_PATH).toBe('/terminal');
 });

@@ -100,6 +100,8 @@ export function composeRenderedMainAppOptions(input: {
       currentChatBranches: input.surface.currentChatBranches,
       formatBranchPickerLabel: input.helpers.formatBranchPickerLabel,
       activeSearchScopeLabel: input.surface.activeSearchScopeLabel,
+      currentHashtag: input.surface.currentHashtag,
+      searchQuery: input.surface.searchQuery,
       posts: input.timeline.posts,
       hasMore: input.timeline.hasMore,
       loadMore: input.timeline.loadMore,

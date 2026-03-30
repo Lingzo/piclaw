@@ -62,6 +62,8 @@ test('composeMainAppShellOptions composes pane-popout and main-shell payloads fr
       currentChatBranches: [],
       formatBranchPickerLabel: () => 'label',
       activeSearchScopeLabel: 'Current branch',
+      currentHashtag: 'tag',
+      searchQuery: 'hello',
       posts: [],
       hasMore: false,
       loadMore: () => {},
@@ -83,6 +85,15 @@ test('composeMainAppShellOptions composes pane-popout and main-shell payloads fr
       previewTabs: new Set(),
       handleTabTogglePreview: () => {},
       panePopoutPath: '/terminal',
+      tabPaneOverrides: new Map(),
+      handleTabClose: () => {},
+      handleTabCloseOthers: () => {},
+      handleTabCloseAll: () => {},
+      handleTabTogglePin: () => {},
+      handleTabEditSource: () => {},
+      openEditor: () => {},
+      openTerminalTab: () => {},
+      openVncTab: () => {},
     },
     agentState: {
       pendingRequest: null,
@@ -104,6 +115,7 @@ test('composeMainAppShellOptions composes pane-popout and main-shell payloads fr
       contextUsage: null,
       notificationsEnabled: false,
       notificationPermission: 'default',
+      handleToggleNotifications: () => {},
       setActiveModel: () => {},
       applyModelState: () => {},
     },
@@ -114,5 +126,11 @@ test('composeMainAppShellOptions composes pane-popout and main-shell payloads fr
   expect(result.panePopoutOptions.panePopoutTitle).toBe('Terminal');
   expect(result.mainShellOptions.workspaceOpen).toBe(true);
   expect(result.mainShellOptions.connectionStatus).toBe('connected');
+  expect(result.mainShellOptions.currentHashtag).toBe('tag');
+  expect(result.mainShellOptions.searchQuery).toBe('hello');
+  expect(typeof result.mainShellOptions.openEditor).toBe('function');
+  expect(typeof result.mainShellOptions.openTerminalTab).toBe('function');
+  expect(typeof result.mainShellOptions.openVncTab).toBe('function');
+  expect(typeof result.mainShellOptions.handleToggleNotifications).toBe('function');
   expect(typeof result.mainShellOptions.toggleWorkspace).toBe('function');
 });
