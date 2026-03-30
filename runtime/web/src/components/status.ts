@@ -15,8 +15,11 @@ const COPY_ICON_SVG = html`
 `;
 
 const GIT_BRANCH_ICON_SVG = html`
-    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <path d="M5 2.5a2 2 0 1 1-1.5 1.94V9a2.5 2.5 0 0 0 2.5 2.5h1.75a2 2 0 1 1 0 1H6A3.5 3.5 0 0 1 2.5 9V4.44A2 2 0 0 1 5 2.5Zm6 7a2 2 0 1 1-1.5 1.94V4a2.5 2.5 0 0 0-2.5-2.5H6.75a2 2 0 1 1 0-1H7A3.5 3.5 0 0 1 10.5 4v7.44A2 2 0 0 1 11 9.5Z"></path>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <path d="M6 3v12"></path>
+        <circle cx="18" cy="6" r="3"></circle>
+        <circle cx="6" cy="18" r="3"></circle>
+        <path d="M18 9a9 9 0 0 1-9 9"></path>
     </svg>
 `;
 

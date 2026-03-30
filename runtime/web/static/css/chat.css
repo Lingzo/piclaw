@@ -1090,22 +1090,23 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 28px;
-    min-height: 28px;
-    padding: var(--spacing-xs);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-full);
+    min-width: 16px;
+    min-height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 0;
     background: transparent;
-    color: var(--accent-color);
-    transition: background-color var(--ui-transition-fast), border-color var(--ui-transition-fast), color var(--ui-transition-fast);
+    color: var(--text-secondary);
+    transition: color var(--ui-transition-fast), opacity var(--ui-transition-fast);
     pointer-events: none;
+    opacity: 0.82;
 }
 
 .compose-session-trigger:hover .compose-session-trigger-icon,
 .compose-session-trigger:focus-visible .compose-session-trigger-icon,
 .compose-session-trigger.active .compose-session-trigger-icon {
-    background-color: var(--accent-soft, rgba(29, 155, 240, 0.1));
-    border-color: color-mix(in srgb, var(--accent-color) 42%, var(--border-color));
+    color: var(--text-primary);
+    opacity: 1;
 }
 
 .compose-mention-icon {
