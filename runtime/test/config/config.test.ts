@@ -332,6 +332,19 @@ test("agent runtime config getter groups foreground and background timeout setti
   );
 });
 
+test("agent runtime config defaults to a one-hour foreground timeout", async () => {
+  await withTempWorkspaceEnv(
+    "piclaw-config-",
+    {},
+    async () => {
+      const cfg = await importFresh<typeof import("../../src/core/config.js")>("../src/core/config.js");
+
+      expect(cfg.AGENT_RUNTIME_CONFIG.timeoutMs).toBe(3600000);
+      expect(cfg.AGENT_RUNTIME_CONFIG.backgroundTimeoutMs).toBe(0);
+    },
+  );
+});
+
 test("runtime timing config getter groups poll intervals and timezone", async () => {
   await withTempWorkspaceEnv(
     "piclaw-config-",
