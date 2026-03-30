@@ -396,7 +396,7 @@ export const AGENT_RUNTIME_CONFIG = Object.freeze<AgentRuntimeConfig>({
       envConfig.PICLAW_AGENT_TIMEOUT ||
       process.env.AGENT_TIMEOUT ||
       envConfig.AGENT_TIMEOUT ||
-      "1800000",
+      "3600000",
     10
   ),
   backgroundTimeoutMs: parseInt(
