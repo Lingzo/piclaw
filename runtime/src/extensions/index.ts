@@ -16,6 +16,7 @@
  *   - workspaceSearch: search_workspace tool for FTS over workspace files.
  *   - sendAdaptiveCard: send_adaptive_card for agent-owned Adaptive Card posting.
  *   - sendDashboardWidget: send_dashboard_widget for posting the built-in live dashboard widget.
+ *   - bunRunner: bun_run for direct Bun script execution without a shell.
  *
  * Consumers:
  *   - agent-pool/session.ts passes builtinExtensionFactories to the resource loader.
@@ -33,6 +34,7 @@ import { uiThemeExtension } from "./ui-theme.js";
 import { smartCompaction } from "./smart-compaction.js";
 import { sendAdaptiveCard } from "./send-adaptive-card.js";
 import { sendDashboardWidget } from "./send-dashboard-widget.js";
+import { bunRunner } from "./bun-runner.js";
 import { exitProcess } from "./exit-process.js";
 import { autoresearchSupervisor } from "./autoresearch-supervisor.js";
 
@@ -50,6 +52,7 @@ export const builtinExtensionFactories: ExtensionFactory[] = [
   smartCompaction,
   sendAdaptiveCard,
   sendDashboardWidget,
+  bunRunner,
   exitProcess,
   autoresearchSupervisor,
 ];
