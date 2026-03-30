@@ -4,7 +4,7 @@ title: "Master: codebase quality cleanup & refactoring (2026-Q1)"
 status: doing
 priority: critical
 created: 2026-03-23
-updated: 2026-03-29
+updated: 2026-03-30
 tags:
   - master
   - refactor
@@ -31,7 +31,7 @@ Tracking ticket for the major piclaw codebase cleanup and refactoring effort, ba
 | Tests | 1,118/1,123 passing (99.6%) |
 | Type safety | 91 `any` (0.26%) — excellent |
 | Documentation | 97% JSDoc coverage — excellent |
-| Silent catch ratio | 188:96 (2:1) — needs work |
+| Silent swallow guard | 0 empty `catch {}` / 0 empty promise swallows — guard clean |
 | God-class risk | 2 files > 1,400 lines — critical |
 
 ## Current blocking tickets
@@ -77,11 +77,28 @@ These are desirable but not required to close this ticket:
 - [x] Full test suite passes (0 failures)
 - [ ] No file in `src/` exceeds 800 lines
 - [ ] No class exceeds 400 lines
-- [ ] Silent catch ratio is below 1:1 (more named than silent)
+- [x] Silent catch ratio is below 1:1 (more named than silent)
 - [ ] `core/` and `secure/` test coverage ≥ 50%
 - [ ] Re-run quality assessment and confirm grade improvement
 
 ## Updates
+
+### 2026-03-30
+- Re-ran the silent-swallow audit via `bun run check:silent-swallows`; current repo metrics are:
+  - `repo_silent_catch_blocks=0`
+  - `repo_files_with_silent_catches=0`
+  - `repo_silent_promise_catches=0`
+  - `runtime_core_silent_catches=0`
+- Re-ran the deterministic quality baseline via `bun run audit:baseline-quality-deterministic` after refreshing the audit script's subgroup map for two newer web tests (`drawio-pane` and `tool-git-context`) and updating the matching audit test expectations.
+- Fresh baseline-quality results are fully green:
+  - `failed_root_gates=0`
+  - `failed_deterministic_groups=0`
+  - `flaky_groups_after_3x_rerun=0`
+  - `followup_tickets_needed=0`
+  - `stability_gap_count=0`
+- Artifact evidence: `artifacts/baseline-quality-deterministic/2026-03-30T11-04-08Z/summary.md`
+- Criteria update: the silent-catch / silent-swallow gate is now satisfied, but the final "re-run quality assessment and confirm grade improvement" checkbox should remain open until the narrative report-card style assessment is refreshed explicitly.
+- Quality: ★★★★☆ 8/10 (problem: 2, scope: 2, test: 2, deps: 1, risk: 1)
 
 ### 2026-03-29
 - Board reassessment after CSS closeout:
