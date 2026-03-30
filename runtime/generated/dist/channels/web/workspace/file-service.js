@@ -9,6 +9,7 @@
 import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "fs";
 import { readdir } from "fs/promises";
 import path from "path";
+import { gunzipSync } from "zlib";
 import { Zip, ZipDeflate, ZipPassThrough } from "fflate";
 import { createMedia } from "../../../db.js";
 import { createLogger } from "../../../utils/logger.js";
@@ -16,6 +17,118 @@ import { MAX_ATTACH_BYTES, MAX_EDIT_BYTES, MAX_PREVIEW_BYTES, MAX_UPLOAD_BYTES }
 import { contentTypeForPath, detectBinary, formatMtime, isImageFile, isTextFile } from "./file-utils.js";
 import { isHiddenPath, resolveWorkspacePath, shouldIgnorePath, toRelativePath } from "./paths.js";
 const log = createLogger("web.workspace.file-service");
+function parseZipEntries(buffer, maxEntries = 200) {
+    const eocdSignature = 0x06054b50;
+    const cdSignature = 0x02014b50;
+    const minEocdSize = 22;
+    const maxCommentSize = 0xffff;
+    const searchStart = Math.max(0, buffer.length - (minEocdSize + maxCommentSize));
+    let eocdOffset = -1;
+    for (let offset = buffer.length - minEocdSize; offset >= searchStart; offset -= 1) {
+        if (buffer.readUInt32LE(offset) === eocdSignature) {
+            eocdOffset = offset;
+            break;
+        }
+    }
+    if (eocdOffset < 0) {
+        throw new Error("ZIP end-of-central-directory record not found");
+    }
+    const entryCount = buffer.readUInt16LE(eocdOffset + 10);
+    const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
+    const entries = [];
+    let offset = centralDirectoryOffset;
+    let totalEntries = 0;
+    while (offset + 46 <= buffer.length && totalEntries < entryCount) {
+        if (buffer.readUInt32LE(offset) !== cdSignature)
+            break;
+        const compressedSize = buffer.readUInt32LE(offset + 20);
+        const uncompressedSize = buffer.readUInt32LE(offset + 24);
+        const fileNameLength = buffer.readUInt16LE(offset + 28);
+        const extraLength = buffer.readUInt16LE(offset + 30);
+        const commentLength = buffer.readUInt16LE(offset + 32);
+        const externalAttrs = buffer.readUInt32LE(offset + 38);
+        const nameStart = offset + 46;
+        const nameEnd = nameStart + fileNameLength;
+        if (nameEnd > buffer.length)
+            break;
+        const name = buffer.toString("utf8", nameStart, nameEnd);
+        const isDirectory = name.endsWith("/") || ((externalAttrs >>> 16) & 0o170000) === 0o040000;
+        totalEntries += 1;
+        if (entries.length < maxEntries) {
+            entries.push({
+                name,
+                compressedSize,
+                uncompressedSize,
+                isDirectory,
+            });
+        }
+        offset = nameEnd + extraLength + commentLength;
+    }
+    return {
+        entries,
+        totalEntries,
+        truncated: totalEntries > entries.length,
+    };
+}
+function isTarGzPath(filePath) {
+    const lower = filePath.toLowerCase();
+    return lower.endsWith(".tar.gz") || lower.endsWith(".tgz");
+}
+function parseTarEntries(buffer, maxEntries = 200) {
+    const entries = [];
+    let offset = 0;
+    let totalEntries = 0;
+    while (offset + 512 <= buffer.length) {
+        const header = buffer.subarray(offset, offset + 512);
+        if (header.every((byte) => byte === 0))
+            break;
+        const rawName = header.toString("utf8", 0, 100).replace(/\0.*$/, "");
+        const rawPrefix = header.toString("utf8", 345, 500).replace(/\0.*$/, "");
+        const sizeOctal = header.toString("utf8", 124, 136).replace(/\0.*$/, "").trim();
+        const typeFlag = header.toString("utf8", 156, 157) || "0";
+        const size = sizeOctal ? parseInt(sizeOctal.replace(/\s/g, ""), 8) || 0 : 0;
+        const name = rawPrefix ? `${rawPrefix}/${rawName}` : rawName;
+        const isDirectory = typeFlag === "5" || name.endsWith("/");
+        if (!name)
+            break;
+        totalEntries += 1;
+        if (entries.length < maxEntries) {
+            entries.push({
+                name,
+                compressedSize: null,
+                uncompressedSize: size,
+                isDirectory,
+            });
+        }
+        offset += 512 + Math.ceil(size / 512) * 512;
+    }
+    return {
+        entries,
+        totalEntries,
+        truncated: totalEntries > entries.length,
+    };
+}
+function formatArchiveListing(label, relPath, stats, parsed) {
+    const lines = [
+        `${label}: ${relPath}`,
+        `Entries: ${parsed.totalEntries}`,
+        `Archive size: ${stats.size} bytes`,
+        "",
+    ];
+    for (const entry of parsed.entries) {
+        const kind = entry.isDirectory ? "dir " : "file";
+        const compressionLabel = entry.compressedSize != null && entry.compressedSize !== entry.uncompressedSize
+            ? `, ${entry.compressedSize} B compressed`
+            : "";
+        const sizeLabel = entry.isDirectory ? "" : ` (${entry.uncompressedSize} B${compressionLabel})`;
+        lines.push(`${kind}  ${entry.name}${sizeLabel}`);
+    }
+    if (parsed.truncated) {
+        lines.push("");
+        lines.push(`… showing first ${parsed.entries.length} entries of ${parsed.totalEntries}.`);
+    }
+    return lines.join("\n");
+}
 function normalizeEntryName(raw) {
     const name = (raw || "").trim();
     if (!name || name === "." || name === "..")
@@ -41,6 +154,7 @@ export class WorkspaceFileService {
             const relPath = toRelativePath(targetPath);
             const contentType = contentTypeForPath(targetPath);
             const isImage = isImageFile(targetPath);
+            const ext = path.extname(targetPath).toLowerCase();
             if (isImage) {
                 const rawUrl = `/workspace/raw?path=${encodeURIComponent(relPath)}`;
                 return {
@@ -68,6 +182,39 @@ export class WorkspaceFileService {
                 return { status: 400, body: { error: "File too large to edit" } };
             }
             const buffer = readFileSync(targetPath, { encoding: null });
+            if (!isEditMode && (ext === ".zip" || isTarGzPath(targetPath))) {
+                try {
+                    const isZip = ext === ".zip";
+                    const parsed = isZip ? parseZipEntries(buffer) : parseTarEntries(gunzipSync(buffer));
+                    return {
+                        status: 200,
+                        body: {
+                            path: relPath,
+                            name: path.basename(targetPath),
+                            kind: "text",
+                            content_type: contentType,
+                            size: stats.size,
+                            mtime: formatMtime(stats),
+                            text: formatArchiveListing(isZip ? "ZIP archive" : "tar.gz archive", relPath, stats, parsed),
+                            truncated: parsed.truncated,
+                        },
+                    };
+                }
+                catch {
+                    return {
+                        status: 200,
+                        body: {
+                            path: relPath,
+                            name: path.basename(targetPath),
+                            kind: "binary",
+                            content_type: contentType,
+                            size: stats.size,
+                            mtime: formatMtime(stats),
+                            truncated: false,
+                        },
+                    };
+                }
+            }
             const slice = buffer.subarray(0, maxBytes);
             const truncated = buffer.length > maxBytes;
             if (!isTextFile(targetPath) && detectBinary(slice)) {
@@ -113,7 +260,7 @@ export class WorkspaceFileService {
             return { status: 500, body: { error: "Failed to read file" } };
         }
     }
-    getRaw(pathParam) {
+    getRaw(pathParam, download = false) {
         const targetPath = resolveWorkspacePath(pathParam);
         if (!targetPath)
             return { status: 400, body: "Invalid path" };
@@ -123,7 +270,15 @@ export class WorkspaceFileService {
                 return { status: 400, body: "Path is a directory" };
             const contentType = contentTypeForPath(targetPath);
             const file = Bun.file(targetPath);
-            return { status: 200, body: file, contentType, filePath: targetPath, size: stats.size };
+            return {
+                status: 200,
+                body: file,
+                contentType,
+                filePath: targetPath,
+                size: stats.size,
+                filename: path.basename(targetPath),
+                download,
+            };
         }
         catch {
             return { status: 404, body: "Not found" };

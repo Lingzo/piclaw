@@ -77,7 +77,8 @@ export function handleWorkspaceDelete(req) {
  */
 export function handleWorkspaceRaw(req) {
     const url = new URL(req.url);
-    const result = workspaceService.getRaw(url.searchParams.get("path"));
+    const download = url.searchParams.get("download") === "1" || url.searchParams.get("download") === "true";
+    const result = workspaceService.getRaw(url.searchParams.get("path"), download);
     if (result.status !== 200) {
         return new Response(result.body, {
             status: result.status,
@@ -91,11 +92,13 @@ export function handleWorkspaceRaw(req) {
     const file = result.body;
     const filePath = result.filePath || null;
     const fileSize = typeof result.size === "number" ? result.size : (typeof file?.size === "number" ? file.size : 0);
+    const downloadFilename = String(result.filename || "download").replace(/["\\]/g, "_");
     const baseHeaders = {
         "Content-Type": contentType,
         "Accept-Ranges": "bytes",
         "X-Frame-Options": "SAMEORIGIN",
         "Content-Security-Policy": "default-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'",
+        ...(result.download ? { "Content-Disposition": `attachment; filename="${downloadFilename}"` } : {}),
     };
     const readRangeChunk = (start, chunkSize) => {
         if (!filePath || chunkSize <= 0)

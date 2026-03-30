@@ -709,11 +709,11 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
     const hasActiveClients = channel.sse.clients.size > 0;
     // Keep interactive web turns bounded so stalled sessions still reach a
     // terminal state, but do not clamp them too aggressively. A 5 minute cap
-    // proved too short for legitimate long-running tool workflows, and 15
-    // minutes has still been a little tight for some real sessions, so allow up
-    // to 20 minutes here while still respecting any lower global timeout.
+    // proved too short for legitimate long-running tool workflows, 20 minutes
+    // has still been too tight for some real sessions, so allow up to 40
+    // minutes here while still respecting any lower global timeout.
     const agentRuntimeConfig = getAgentRuntimeConfig();
-    const INTERACTIVE_WEB_TIMEOUT_MS = Math.min(agentRuntimeConfig.timeoutMs, 20 * 60 * 1000);
+    const INTERACTIVE_WEB_TIMEOUT_MS = Math.min(agentRuntimeConfig.timeoutMs, 40 * 60 * 1000);
     const timeoutMs = hasActiveClients
         ? INTERACTIVE_WEB_TIMEOUT_MS
         : (agentRuntimeConfig.backgroundTimeoutMs > 0 ? agentRuntimeConfig.backgroundTimeoutMs : agentRuntimeConfig.timeoutMs);
@@ -721,6 +721,13 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
     let hadIntermediateOutput = false;
     let persistedIntermediateOutput = false;
     let intermediatePersistFailed = false;
+    const isCompactionIntentActive = () => {
+        const status = channel.getAgentStatus(chatJid);
+        if (!status || typeof status !== "object")
+            return false;
+        const intentKey = status.intent_key ?? status.intentKey;
+        return status.type === "intent" && intentKey === "compaction";
+    };
     const publishDraftFallback = (reason) => {
         // Draft fallback should publish the currently visible draft for whichever
         // turn failed to finalize, even if earlier turns in the same session were
@@ -731,11 +738,14 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         const draftText = typeof draft?.text === "string" ? draft.text.trim() : "";
         if (!draftText)
             return false;
+        const compactionNote = isCompactionIntentActive()
+            ? "\n\nℹ️ Context compaction was in progress."
+            : "";
         const suffix = reason === "timeout"
-            ? "\n\n⚠️ Response timed out before finalization."
+            ? `\n\n⚠️ Response timed out before finalization.${compactionNote}`
             : reason === "error"
-                ? "\n\n⚠️ Response ended with an error before finalization."
-                : "";
+                ? `\n\n⚠️ Response ended with an error before finalization.${compactionNote}`
+                : compactionNote;
         return storeAgentTurn(channel, emitter, {
             chatJid,
             text: `${draftText}${suffix}`,
