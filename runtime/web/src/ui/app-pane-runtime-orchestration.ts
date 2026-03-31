@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from '../vendor/preact-htm.js';
+import { consumeEditorPopoutState, consumePanePopoutTransferToken, type EditorPopoutTransferState } from '../panes/editor-popout-transfer.js';
 import { paneRegistry, tabStore } from '../panes/index.js';
 import {
   getPanePopoutTitle,
@@ -74,6 +75,12 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
   const editorInstanceRef = useRef<any>(null);
   const dockContainerRef = useRef<any>(null);
   const dockInstanceRef = useRef<any>(null);
+
+  const pendingEditorPopoutTransferRef = useRef<EditorPopoutTransferState | null>((() => {
+    if (!panePopoutMode) return null;
+    const token = consumePanePopoutTransferToken('editor_popout');
+    return consumeEditorPopoutState(token);
+  })());
 
   const hasDockPanes = paneRegistry.getDockPanes().length > 0;
   const [dockVisible, setDockVisible] = useState(false);
@@ -162,7 +169,14 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
     if (!panePopoutMode || !panePopoutPath) return;
     const activeId = tabStore.getActiveId();
     if (activeId === panePopoutPath) return;
-    openEditor(panePopoutPath, panePopoutLabel ? { label: panePopoutLabel } : undefined);
+    const transfer = pendingEditorPopoutTransferRef.current?.path === panePopoutPath
+      ? pendingEditorPopoutTransferRef.current
+      : null;
+    openEditor(panePopoutPath, {
+      ...(panePopoutLabel ? { label: panePopoutLabel } : {}),
+      ...(transfer?.paneOverrideId ? { paneOverrideId: transfer.paneOverrideId } : {}),
+      ...(transfer?.viewState ? { viewState: transfer.viewState } : {}),
+    });
   }, [openEditor, panePopoutLabel, panePopoutMode, panePopoutPath]);
 
   useEffect(() => {
@@ -177,8 +191,17 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
     const activeId = tabStripActiveId;
     if (!activeId) return;
 
-    const context = { path: activeId, mode: 'edit' };
-    const ext = (activePaneOverrideId ? paneRegistry.get(activePaneOverrideId) : null)
+    const pendingTransfer = pendingEditorPopoutTransferRef.current?.path === activeId
+      ? pendingEditorPopoutTransferRef.current
+      : null;
+    const effectivePaneOverrideId = activePaneOverrideId || pendingTransfer?.paneOverrideId || null;
+    const context = {
+      path: activeId,
+      mode: 'edit',
+      ...(pendingTransfer?.content !== undefined ? { content: pendingTransfer.content } : {}),
+      ...(pendingTransfer?.mtime !== undefined ? { mtime: pendingTransfer.mtime } : {}),
+    };
+    const ext = (effectivePaneOverrideId ? paneRegistry.get(effectivePaneOverrideId) : null)
       || paneRegistry.resolve(context)
       || paneRegistry.get('editor');
 
@@ -214,6 +237,10 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
     }
 
     requestAnimationFrame(() => instance.focus?.());
+
+    if (pendingTransfer) {
+      pendingEditorPopoutTransferRef.current = null;
+    }
 
     return () => {
       if (editorInstanceRef.current === instance) {

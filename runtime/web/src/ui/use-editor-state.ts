@@ -118,7 +118,11 @@ export function useEditorState({ onTabClosed } = {}) {
             console.warn(`[openEditor] paneRegistry.resolve() error for "${path}":`, err);
         }
         const label = typeof options?.label === 'string' && options.label.trim() ? options.label.trim() : undefined;
+        const viewState = options?.viewState && typeof options.viewState === 'object' ? options.viewState : null;
         tabStore.open(path, label);
+        if (viewState) {
+            tabStore.saveViewState(path, viewState);
+        }
         if (paneOverrideId) {
             setTabPaneOverrides((prev) => {
                 if (prev.get(path) === paneOverrideId) return prev;

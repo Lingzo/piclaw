@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from '../vendor/preact-htm.js';
+import { createEditorPopoutTransferPayload } from '../panes/editor-popout-transfer.js';
 import { tabStore } from '../panes/index.js';
 import { watchPaneOpenEvents } from './app-browser-events.js';
 import {
@@ -29,6 +30,8 @@ interface RefBox<T> {
 
 interface PaneTransferInstanceLike {
   preparePopoutTransfer?: () => Promise<Record<string, string> | null> | Record<string, string> | null;
+  getContent?: () => string | undefined;
+  isDirty?: () => boolean;
 }
 
 interface BranchRecordLike {
@@ -272,6 +275,7 @@ export interface PopOutPaneActionOptions {
   editorInstanceRef: RefBox<PaneTransferInstanceLike | null>;
   dockInstanceRef: RefBox<PaneTransferInstanceLike | null>;
   terminalTabPath: string;
+  tabPaneOverrides?: Map<string, string> | null;
   dockVisible: boolean;
   resolveTab: (path: string) => { dirty?: boolean } | null | undefined;
   closeTab: (path: string) => void;
@@ -292,6 +296,7 @@ export async function popOutPaneAction(options: PopOutPaneActionOptions): Promis
     editorInstanceRef,
     dockInstanceRef,
     terminalTabPath,
+    tabPaneOverrides,
     dockVisible,
     resolveTab,
     closeTab,
@@ -316,6 +321,20 @@ export async function popOutPaneAction(options: PopOutPaneActionOptions): Promis
       editorInstanceRef,
       dockInstanceRef,
       terminalTabPath,
+      buildEditorPopoutTransfer: (panePath: string) => {
+        if (!panePath || panePath === terminalTabPath) return null;
+        const instance = editorInstanceRef.current;
+        const content = typeof instance?.getContent === 'function' ? instance.getContent() : undefined;
+        const isDirty = typeof instance?.isDirty === 'function' ? instance.isDirty() : false;
+        const paneOverrideId = tabPaneOverrides instanceof Map ? (tabPaneOverrides.get(panePath) || null) : null;
+        const viewState = tabStore.getViewState(panePath) || null;
+        return createEditorPopoutTransferPayload({
+          path: panePath,
+          content: isDirty ? content : undefined,
+          paneOverrideId,
+          viewState,
+        });
+      },
     }),
     closeSourcePaneIfTransferred: (panePath: string) => {
       closeTransferredPaneSource({
@@ -443,6 +462,7 @@ export interface UseBranchPaneLifecycleOptions {
   editorInstanceRef: RefBox<PaneTransferInstanceLike | null>;
   dockInstanceRef: RefBox<PaneTransferInstanceLike | null>;
   terminalTabPath: string;
+  tabPaneOverrides: Map<string, string> | null;
   dockVisible: boolean;
   resolveTab: (path: string) => { dirty?: boolean } | null | undefined;
   closeTab: (path: string) => void;
@@ -493,6 +513,7 @@ export function useBranchPaneLifecycle(options: UseBranchPaneLifecycleOptions) {
     editorInstanceRef,
     dockInstanceRef,
     terminalTabPath,
+    tabPaneOverrides,
     dockVisible,
     resolveTab,
     closeTab,
@@ -614,12 +635,13 @@ export function useBranchPaneLifecycle(options: UseBranchPaneLifecycleOptions) {
       editorInstanceRef,
       dockInstanceRef,
       terminalTabPath,
+      tabPaneOverrides,
       dockVisible,
       resolveTab,
       closeTab,
       setDockVisible,
     });
-  }, [activateTab, closeTab, currentChatJid, dockInstanceRef, dockVisible, editorInstanceRef, isWebAppMode, resolveTab, setDockVisible, showIntentToast, tabStripActiveId, terminalTabPath]);
+  }, [activateTab, closeTab, currentChatJid, dockInstanceRef, dockVisible, editorInstanceRef, isWebAppMode, resolveTab, setDockVisible, showIntentToast, tabPaneOverrides, tabStripActiveId, terminalTabPath]);
 
   useEffect(() => watchPaneOpenEventBridge({
     openEditor,
