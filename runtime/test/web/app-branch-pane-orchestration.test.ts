@@ -80,6 +80,19 @@ test('resolvePanePopoutTransfer activates an inactive tab before requesting tran
   expect(activateCalls).toEqual(['piclaw://vnc/lab']);
 });
 
+test('resolvePanePopoutTransfer falls back to generic editor transfer payloads', async () => {
+  const buildEditorPopoutTransfer = (panePath: string) => ({ editor_popout: `token:${panePath}` });
+
+  await expect(resolvePanePopoutTransfer({
+    panePath: '/workspace/notes.md',
+    tabStripActiveId: '/workspace/notes.md',
+    editorInstanceRef: { current: { getContent: () => '# Draft', isDirty: () => true } },
+    dockInstanceRef: { current: null },
+    terminalTabPath: '/__terminal__',
+    buildEditorPopoutTransfer,
+  })).resolves.toEqual({ editor_popout: 'token:/workspace/notes.md' });
+});
+
 test('closeTransferredPaneSource closes clean tabs and falls back to hiding dock for terminal', () => {
   const closed: string[] = [];
   const dockVisibility: boolean[] = [];

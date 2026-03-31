@@ -159,6 +159,7 @@ interface ComposeBranchPaneActionOptionsInput {
   editorInstanceRef: RefBox<any>;
   dockInstanceRef: RefBox<any>;
   terminalTabPath: string;
+  tabPaneOverrides: Map<string, string> | null;
   dockVisible: boolean;
   resolveTab: (path: string) => { dirty?: boolean } | null | undefined;
   closeTab: (path: string) => void;
@@ -208,6 +209,7 @@ export function composeBranchPaneActionOptions(input: ComposeBranchPaneActionOpt
     editorInstanceRef: input.editorInstanceRef,
     dockInstanceRef: input.dockInstanceRef,
     terminalTabPath: input.terminalTabPath,
+    tabPaneOverrides: input.tabPaneOverrides,
     dockVisible: input.dockVisible,
     resolveTab: input.resolveTab,
     closeTab: input.closeTab,

@@ -284,6 +284,7 @@ export function useMainAppOrchestrationComposition(options: UseMainAppOrchestrat
     editorInstanceRef: paneRuntime.editorInstanceRef,
     dockInstanceRef: paneRuntime.dockInstanceRef,
     terminalTabPath: services.terminalTabPath,
+    tabPaneOverrides: services.tabPaneOverrides,
     dockVisible: paneRuntime.dockVisible,
     resolveTab: services.resolveTab,
     closeTab: services.closeTab,

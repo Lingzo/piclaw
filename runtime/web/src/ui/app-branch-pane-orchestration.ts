@@ -8,6 +8,10 @@ interface PaneTransferInstanceLike {
   preparePopoutTransfer?: () => Promise<Record<string, string> | null> | Record<string, string> | null;
 }
 
+interface EditorPopoutTransferBuilder {
+  (panePath: string): Record<string, string> | null;
+}
+
 export interface NavigateToSelectedBranchOptions {
   hasWindow?: boolean;
   nextChatJid: unknown;
@@ -44,6 +48,7 @@ export interface ResolvePanePopoutTransferOptions {
   terminalTabPath: string;
   activateTab?: (path: string) => void;
   getActiveTabId?: () => string | null;
+  buildEditorPopoutTransfer?: EditorPopoutTransferBuilder;
 }
 
 function normalizePanePath(value: string | null | undefined): string {
@@ -64,6 +69,7 @@ export async function resolvePanePopoutTransfer(options: ResolvePanePopoutTransf
     terminalTabPath,
     activateTab,
     getActiveTabId,
+    buildEditorPopoutTransfer,
   } = options;
 
   if (panePath === terminalTabPath) {
@@ -102,11 +108,14 @@ export async function resolvePanePopoutTransfer(options: ResolvePanePopoutTransf
     }
   }
 
-  if (typeof sourceInstance?.preparePopoutTransfer !== 'function') {
-    return null;
+  if (typeof sourceInstance?.preparePopoutTransfer === 'function') {
+    const explicitTransfer = await sourceInstance.preparePopoutTransfer();
+    if (explicitTransfer) {
+      return explicitTransfer;
+    }
   }
 
-  return await sourceInstance.preparePopoutTransfer();
+  return buildEditorPopoutTransfer?.(panePath) ?? null;
 }
 
 export interface CloseTransferredPaneSourceOptions {
