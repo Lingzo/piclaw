@@ -185,24 +185,26 @@ Core ideas:
 
 ### 2026-03-31
 - Lane change: `10-next` → `20-doing`.
-- Started **Slice 1 — ownership model and placeholders**.
+- Started **Slice 1 — ownership model and placeholders** and the first piece of **Slice 2 — browser window handshake**.
 - Implemented the first host-layer detach scaffolding in the web UI:
   - opaque `pane_instance_id` / `pane_window_id` transfer params for standalone pane windows
   - detached-tab and detached-dock placeholder states in the main shell
   - explicit `Reattach` actions in the main shell and pane pop-out shell
   - detach-aware tab-strip affordances and context-menu reattach action
   - opener-based reattach messaging plus basic closed-window recovery polling
+  - detach-claim handshake scaffolding so the source window now records a pending detach and only marks the pane detached after the pop-out claims ownership with matching opaque ids
   - compatibility fallback retained in `popOutPane(...)` when detach-aware registration is not used
 - Added focused regression coverage in:
+  - `runtime/test/web/pane-detach-state.test.ts`
   - `runtime/test/web/pane-detach-transfer.test.ts`
   - `runtime/test/web/app-window-actions.test.ts`
   - `runtime/test/web/app-pane-mode-render.test.ts`
 - Validation completed:
-  - `bun test runtime/test/web/pane-detach-transfer.test.ts runtime/test/web/app-window-actions.test.ts runtime/test/web/app-pane-mode-render.test.ts runtime/test/web/app-main-shell-render.test.ts`
+  - `bun test runtime/test/web/pane-detach-state.test.ts runtime/test/web/pane-detach-transfer.test.ts runtime/test/web/app-window-actions.test.ts runtime/test/web/app-pane-mode-render.test.ts runtime/test/web/app-main-shell-render.test.ts`
   - `bun run build:web`
   - `bun run lint`
   - `bun run typecheck`
-- Remaining gap for later slices: this is still host-level ownership UI and reopen-backed orchestration, not full live pane instance migration.
+- Remaining gap for later slices: this is still claim/ownership orchestration on top of reopen-backed pane startup, not full live pane instance migration.
 
 ## Definition of Done
 

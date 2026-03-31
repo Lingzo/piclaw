@@ -7,6 +7,12 @@ import {
   readPaneDetachTransferState,
   type PaneDetachTransferState,
 } from '../panes/pane-detach-transfer.js';
+import {
+  createPendingPaneOwnershipState,
+  finalizePendingPaneOwnership,
+  matchesPaneDetachClaim,
+  type PendingPaneOwnershipState,
+} from '../panes/pane-detach-state.js';
 import { paneRegistry, tabStore } from '../panes/index.js';
 import {
   getPanePopoutTitle,
@@ -109,9 +115,15 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
   const tabPaneInstanceIdsRef = useRef<Map<string, string>>(new Map());
   const dockPaneInstanceIdRef = useRef<string>(generatePaneDetachId('pane-instance'));
   const detachedWindowHandlesRef = useRef<Map<string, any>>(new Map());
+  const [pendingDetachedTabs, setPendingDetachedTabs] = useState<Map<string, PendingPaneOwnershipState>>(() => new Map());
+  const pendingDetachedTabsRef = useRef(pendingDetachedTabs);
+  pendingDetachedTabsRef.current = pendingDetachedTabs;
   const [detachedTabs, setDetachedTabs] = useState<Map<string, DetachedPaneState>>(() => new Map());
   const detachedTabsRef = useRef(detachedTabs);
   detachedTabsRef.current = detachedTabs;
+  const [pendingDetachedDockPane, setPendingDetachedDockPane] = useState<PendingPaneOwnershipState | null>(null);
+  const pendingDetachedDockPaneRef = useRef<PendingPaneOwnershipState | null>(pendingDetachedDockPane);
+  pendingDetachedDockPaneRef.current = pendingDetachedDockPane;
   const [detachedDockPane, setDetachedDockPane] = useState<DetachedPaneState | null>(null);
   const detachedDockPaneRef = useRef<DetachedPaneState | null>(detachedDockPane);
   detachedDockPaneRef.current = detachedDockPane;
@@ -150,9 +162,24 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
   );
   const dockPaneDetached = !panePopoutMode ? detachedDockPane : null;
 
+  const clearPendingDetachedPane = useCallback((panePath: string) => {
+    if (!panePath) return;
+    if (panePath === terminalTabPath) {
+      setPendingDetachedDockPane((current) => (current?.panePath === panePath ? null : current));
+      return;
+    }
+    setPendingDetachedTabs((current) => {
+      if (!current.has(panePath)) return current;
+      const next = new Map(current);
+      next.delete(panePath);
+      return next;
+    });
+  }, [terminalTabPath]);
+
   const clearDetachedPane = useCallback((panePath: string) => {
     if (!panePath) return;
     detachedWindowHandlesRef.current.delete(panePath);
+    clearPendingDetachedPane(panePath);
     if (panePath === terminalTabPath) {
       setDetachedDockPane((current) => (current?.panePath === panePath ? null : current));
       return;
@@ -163,7 +190,7 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
       next.delete(panePath);
       return next;
     });
-  }, [terminalTabPath]);
+  }, [clearPendingDetachedPane, terminalTabPath]);
 
   const reattachPane = useCallback((panePath: string, options: ReattachPaneOptions = {}) => {
     const normalizedPath = typeof panePath === 'string' ? panePath.trim() : '';
@@ -213,31 +240,64 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
   const registerDetachedPaneWindow = useCallback((panePath: string, label?: string | null, openedWindow?: any, detachParams?: Record<string, string> | null) => {
     const normalizedPath = typeof panePath === 'string' ? panePath.trim() : '';
     if (!normalizedPath || !detachParams) return;
-    const paneInstanceId = typeof detachParams.pane_instance_id === 'string' ? detachParams.pane_instance_id.trim() : '';
-    const ownerWindowId = typeof detachParams.pane_window_id === 'string' ? detachParams.pane_window_id.trim() : '';
-    if (!paneInstanceId || !ownerWindowId) return;
-
-    const nextState: DetachedPaneState = {
+    const pendingState = createPendingPaneOwnershipState({
       panePath: normalizedPath,
-      paneInstanceId,
-      ownerWindowId,
-      detachedAt: new Date().toISOString(),
-      label: typeof label === 'string' && label.trim() ? label.trim() : null,
-    };
+      paneInstanceId: detachParams.pane_instance_id,
+      ownerWindowId: detachParams.pane_window_id,
+      sourceWindowId: detachParams.pane_source_window_id,
+      label,
+    });
+    if (!pendingState) return;
 
     detachedWindowHandlesRef.current.set(normalizedPath, openedWindow || null);
     if (normalizedPath === terminalTabPath) {
-      setDetachedDockPane(nextState);
-      setDockVisible(true);
+      setPendingDetachedDockPane(pendingState);
       return;
     }
 
-    setDetachedTabs((current) => {
+    setPendingDetachedTabs((current) => {
       const next = new Map(current);
-      next.set(normalizedPath, nextState);
+      next.set(normalizedPath, pendingState);
       return next;
     });
-    tabStore.activate(normalizedPath);
+  }, [terminalTabPath]);
+
+  const claimDetachedPaneWindow = useCallback((claim: { panePath?: string | null; paneInstanceId?: string | null; paneWindowId?: string | null }, sourceWindow?: any) => {
+    const panePath = typeof claim?.panePath === 'string' ? claim.panePath.trim() : '';
+    if (!panePath) return false;
+
+    if (panePath === terminalTabPath) {
+      const pending = pendingDetachedDockPaneRef.current;
+      if (!matchesPaneDetachClaim(pending, claim)) return false;
+      const expectedHandle = detachedWindowHandlesRef.current.get(panePath);
+      if (expectedHandle && sourceWindow && expectedHandle !== sourceWindow) return false;
+      const nextState = finalizePendingPaneOwnership(pending);
+      if (!nextState) return false;
+      setPendingDetachedDockPane(null);
+      setDetachedDockPane(nextState);
+      setDockVisible(true);
+      return true;
+    }
+
+    const pending = pendingDetachedTabsRef.current.get(panePath) || null;
+    if (!matchesPaneDetachClaim(pending, claim)) return false;
+    const expectedHandle = detachedWindowHandlesRef.current.get(panePath);
+    if (expectedHandle && sourceWindow && expectedHandle !== sourceWindow) return false;
+    const nextState = finalizePendingPaneOwnership(pending);
+    if (!nextState) return false;
+    setPendingDetachedTabs((current) => {
+      if (!current.has(panePath)) return current;
+      const next = new Map(current);
+      next.delete(panePath);
+      return next;
+    });
+    setDetachedTabs((current) => {
+      const next = new Map(current);
+      next.set(panePath, nextState);
+      return next;
+    });
+    tabStore.activate(panePath);
+    return true;
   }, [terminalTabPath]);
 
   const requestPanePopoutReattach = useCallback(() => {
@@ -342,6 +402,18 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
         tabPaneInstanceIdsRef.current.delete(path);
       }
     }
+    setPendingDetachedTabs((current) => {
+      let changed = false;
+      const next = new Map(current);
+      for (const path of Array.from(next.keys())) {
+        if (!openTabIds.has(path)) {
+          next.delete(path);
+          detachedWindowHandlesRef.current.delete(path);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
     setDetachedTabs((current) => {
       let changed = false;
       const next = new Map(current);
@@ -362,7 +434,16 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       const payload = event.data;
-      if (!payload || payload.type !== 'piclaw-pane-reattach-request') return;
+      if (!payload || typeof payload !== 'object') return;
+      if (payload.type === 'piclaw-pane-detach-claim') {
+        claimDetachedPaneWindow({
+          panePath: payload.panePath,
+          paneInstanceId: payload.paneInstanceId,
+          paneWindowId: payload.paneWindowId,
+        }, event.source);
+        return;
+      }
+      if (payload.type !== 'piclaw-pane-reattach-request') return;
       const panePath = typeof payload.panePath === 'string' ? payload.panePath.trim() : '';
       if (!panePath) return;
       if (panePath === terminalTabPath) {
@@ -380,19 +461,26 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [panePopoutMode, reattachPane, terminalTabPath]);
+  }, [claimDetachedPaneWindow, panePopoutMode, reattachPane, terminalTabPath]);
 
   useEffect(() => {
     if (panePopoutMode) return undefined;
     const timer = setInterval(() => {
       for (const [panePath, handle] of detachedWindowHandlesRef.current.entries()) {
-        if (handle && handle.closed) {
-          reattachPane(panePath, { closeDetachedWindow: false });
+        if (!handle || !handle.closed) continue;
+        const isPending = panePath === terminalTabPath
+          ? Boolean(pendingDetachedDockPaneRef.current)
+          : pendingDetachedTabsRef.current.has(panePath);
+        if (isPending) {
+          detachedWindowHandlesRef.current.delete(panePath);
+          clearPendingDetachedPane(panePath);
+          continue;
         }
+        reattachPane(panePath, { closeDetachedWindow: false });
       }
     }, 750);
     return () => clearInterval(timer);
-  }, [panePopoutMode, reattachPane]);
+  }, [clearPendingDetachedPane, panePopoutMode, reattachPane, terminalTabPath]);
 
   useEffect(() => {
     if (!panePopoutMode || !panePopoutPath) return;
@@ -407,6 +495,23 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
       ...(transfer?.viewState ? { viewState: transfer.viewState } : {}),
     });
   }, [openEditor, panePopoutLabel, panePopoutMode, panePopoutPath]);
+
+  useEffect(() => {
+    if (!panePopoutMode) return;
+    const detachState = paneDetachTransferRef.current;
+    if (!hasPaneDetachTransferState(detachState)) return;
+    if (typeof window === 'undefined' || !window.opener || window.opener.closed) return;
+    try {
+      window.opener.postMessage({
+        type: 'piclaw-pane-detach-claim',
+        panePath: detachState.panePath,
+        paneInstanceId: detachState.paneInstanceId,
+        paneWindowId: detachState.paneWindowId,
+      }, window.location.origin);
+    } catch {
+      /* expected: opener can disappear before the popout completes boot. */
+    }
+  }, [panePopoutMode]);
 
   useEffect(() => {
     const container = editorContainerRef.current;
