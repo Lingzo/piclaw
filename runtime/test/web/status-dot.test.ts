@@ -22,6 +22,8 @@ describe('status dot helpers', () => {
   test('hides running status dots for tool execution rows and last-activity rows', () => {
     expect(shouldShowRunningStatusDot({ type: 'tool_call' })).toBe(false);
     expect(shouldShowRunningStatusDot({ type: 'tool_status' })).toBe(false);
+    expect(shouldShowRunningStatusDot({ type: 'waiting', tool_name: 'bash' })).toBe(false);
+    expect(shouldShowRunningStatusDot({ type: 'waiting', tool_args: { command: 'pwd' } })).toBe(false);
     expect(shouldShowRunningStatusDot({ type: 'tool_call' }, { isLastActivity: true })).toBe(false);
     expect(shouldShowRunningStatusDot({ type: 'error' })).toBe(true);
     expect(shouldShowRunningStatusDot({ type: 'plan' })).toBe(true);

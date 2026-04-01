@@ -16,5 +16,10 @@ export function buildComposeStatusDotClass({ pulsing = false } = {}) {
 export function shouldShowRunningStatusDot(status, { isLastActivity = false } = {}) {
     if (isLastActivity) return false;
     const type = typeof status?.type === 'string' ? status.type : '';
+    const hasToolMetadata = Boolean(
+        (typeof status?.tool_name === 'string' && status.tool_name.trim())
+        || status?.tool_args,
+    );
+    if (hasToolMetadata) return false;
     return type !== 'tool_call' && type !== 'tool_status';
 }

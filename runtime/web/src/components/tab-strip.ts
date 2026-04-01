@@ -115,28 +115,29 @@ export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, o
         return () => document.removeEventListener('keydown', onKeyDown);
     }, [tabs, activeId, onActivate, onClose]);
 
-    const handleTabClick = useCallback((e, id) => {
-        // Middle-click to close
+    const handleTabMouseDown = useCallback((e, id) => {
+        // Middle-click closes immediately so the tab never becomes active.
         if (e.button === 1) {
             e.preventDefault();
             onClose?.(id);
-            return;
         }
+    }, [onClose]);
+
+    const handleTabClick = useCallback((e, id) => {
+        if (e.defaultPrevented) return;
         if (e.button === 0) {
             onActivate?.(id);
         }
-    }, [onActivate, onClose]);
+    }, [onActivate]);
 
     const handleContextMenu = useCallback((e, id) => {
         e.preventDefault();
         setContextMenu({ id, x: e.clientX, y: e.clientY });
     }, []);
 
-    const handleCloseMouseDown = useCallback((e) => {
-        // Prevent the parent tab's onMouseDown handler from activating the tab
-        // first. This is especially important for the last open tab, where the
-        // close control should behave as a pure close action rather than a
-        // close-after-activate sequence.
+    const handleClosePointerDown = useCallback((e) => {
+        // Keep close-button pointer presses isolated from the parent tab so the
+        // tab never activates before the close click lands.
         e.preventDefault();
         e.stopPropagation();
     }, []);
@@ -187,7 +188,8 @@ export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, o
                     role="tab"
                     aria-selected=${tab.id === activeId}
                     title=${tab.path}
-                    onMouseDown=${(e) => handleTabClick(e, tab.id)}
+                    onMouseDown=${(e) => handleTabMouseDown(e, tab.id)}
+                    onClick=${(e) => handleTabClick(e, tab.id)}
                     onContextMenu=${(e) => handleContextMenu(e, tab.id)}
                 >
                     ${tab.pinned && html`
@@ -204,7 +206,8 @@ export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, o
                     <button
                         type="button"
                         class="tab-close"
-                        onMouseDown=${handleCloseMouseDown}
+                        onPointerDown=${handleClosePointerDown}
+                        onMouseDown=${handleClosePointerDown}
                         onClick=${(e) => handleCloseClick(e, tab.id)}
                         title=${tab.dirty ? 'Unsaved changes' : 'Close'}
                         aria-label=${tab.dirty ? 'Unsaved changes' : `Close ${tab.label}`}
