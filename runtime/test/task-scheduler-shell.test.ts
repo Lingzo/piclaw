@@ -61,3 +61,34 @@ test("runScheduledTask executes shell command and sends output", async () => {
   expect(sentMessages[0].text).toContain("```");
   expect(sentMessages[0].text).toContain("hi");
 });
+
+test("runScheduledTask keeps empty shell output silent", async () => {
+  const taskId = `task-shell-empty-${Date.now()}`;
+  db!.createTask({
+    id: taskId,
+    chat_jid: "web:default",
+    prompt: "true",
+    model: null,
+    task_kind: "shell",
+    command: "true",
+    cwd: ".",
+    timeout_sec: 10,
+    schedule_type: "once",
+    schedule_value: new Date().toISOString(),
+    next_run: new Date().toISOString(),
+    status: "active",
+    created_at: new Date().toISOString(),
+  });
+
+  const task = db!.getTaskById(taskId);
+  expect(task?.task_kind).toBe("shell");
+
+  await scheduler!.runScheduledTask(task!, {
+    queue: {} as any,
+    agentPool: {} as any,
+    sendMessage: async (jid, text) => { sentMessages.push({ jid, text }); },
+  });
+
+  expect(sentMessages.length).toBe(0);
+  expect(db!.getTaskById(taskId)?.last_result).toBe("```\n(no output)\n```");
+});

@@ -146,12 +146,12 @@ async function restoreOriginalModel(
 
 const MAX_SHELL_OUTPUT_CHARS = 8000;
 
-async function runShellTask(task: ScheduledTask): Promise<{ result: string | null; error: string | null }> {
+async function runShellTask(task: ScheduledTask): Promise<{ result: string | null; error: string | null; notify: boolean }> {
   const validated = validateShellCommand(task.command);
-  if (!validated.ok) return { result: null, error: validated.error || "Invalid command." };
+  if (!validated.ok) return { result: null, error: validated.error || "Invalid command.", notify: false };
 
   const cwdResult = validateShellCwd(task.cwd);
-  if (!cwdResult.ok) return { result: null, error: cwdResult.error || "Invalid cwd." };
+  if (!cwdResult.ok) return { result: null, error: cwdResult.error || "Invalid cwd.", notify: false };
 
   const exec = createTrackedBashOperations();
   let output = "";
@@ -179,12 +179,12 @@ async function runShellTask(task: ScheduledTask): Promise<{ result: string | nul
     const formatted = `\`\`\`\n${summary}${suffix}\n\`\`\``;
 
     if (res.exitCode && res.exitCode !== 0) {
-      return { result: null, error: `Command failed (exit ${res.exitCode}).\n${formatted}` };
+      return { result: null, error: `Command failed (exit ${res.exitCode}).\n${formatted}`, notify: false };
     }
-    return { result: formatted, error: null };
+    return { result: formatted, error: null, notify: Boolean(trimmed || truncated) };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { result: null, error: `Command error: ${message}` };
+    return { result: null, error: `Command error: ${message}`, notify: false };
   }
 }
 
@@ -210,10 +210,12 @@ export async function runScheduledTask(task: ScheduledTask, deps: SchedulerDeps)
       error = out.error;
     } else if (out.result) {
       result = out.result;
-      const t = formatOutbound(result, detectChannel(task.chat_jid));
-      if (t) {
-        await deps.sendMessage(task.chat_jid, t, { forceRoot: true, source: "scheduled" });
-        await deps.sendNudge?.(t);
+      if (out.notify) {
+        const t = formatOutbound(result, detectChannel(task.chat_jid));
+        if (t) {
+          await deps.sendMessage(task.chat_jid, t, { forceRoot: true, source: "scheduled" });
+          await deps.sendNudge?.(t);
+        }
       }
     }
   } else {
