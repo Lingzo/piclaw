@@ -19,15 +19,15 @@ describe("web recovery helpers", () => {
 
     const cleared: string[] = [];
     const rolledBack: Array<{ chatJid: string; prevTs: string }> = [];
-    const enqueued: Array<{ key: string; task: () => Promise<void> }> = [];
+    const enqueued: Array<{ key: string; laneKey?: string; task: () => Promise<void> }> = [];
     const processed: Array<{ chatJid: string; agentId: string }> = [];
     const replyChecks: Array<{ chatJid: string; afterTs: string }> = [];
 
     const ctx: WebRecoveryContext = {
       assistantName: "Pi",
       defaultAgentId: "default",
-      enqueue: (task, key) => {
-        enqueued.push({ task, key });
+      enqueue: (task, key, laneKey) => {
+        enqueued.push({ task, key, laneKey });
       },
       processChat: async (chatJid, agentId) => {
         processed.push({ chatJid, agentId });
@@ -65,7 +65,9 @@ describe("web recovery helpers", () => {
     ]);
     expect(cleared).toEqual(["web:1", "web:2"]);
     expect(rolledBack).toEqual([{ chatJid: "web:3", prevTs: "t3" }]);
-    expect(enqueued.map((item) => item.key)).toEqual(["resume:web:3"]);
+    expect(enqueued.map(({ key, laneKey }) => ({ key, laneKey }))).toEqual([
+      { key: "resume:web:3", laneKey: "web-recovery" },
+    ]);
   });
 
   test("recoverInflightRuns rolls back stale inflight markers to preserve pending turns", () => {
