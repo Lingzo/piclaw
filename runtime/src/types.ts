@@ -110,6 +110,41 @@ export interface TaskRunLog {
   error: string | null;
 }
 
+/** Per-chat SSH remote execution profile used to enable remote core tools. */
+export interface ChatSshConfig {
+  /** Owning chat/session JID. */
+  chat_jid: string;
+  /** SSH target as user@host or host, optionally with :/remote/path suffix. */
+  ssh_target: string;
+  /** SSH port. */
+  ssh_port: number;
+  /** Keychain entry name containing the private key and optional username fallback. */
+  private_key_keychain: string;
+  /** Optional keychain entry containing known_hosts content. */
+  known_hosts_keychain: string | null;
+  /** Strict host key checking mode. */
+  strict_host_key_checking: "yes" | "accept-new" | "no";
+  /** Creation timestamp. */
+  created_at: string;
+  /** Last update timestamp. */
+  updated_at: string;
+}
+
+/** When an SSH config change takes effect for a chat session. */
+export type ChatSshConfigApplyTiming = "immediate" | "next_turn" | "next_session";
+
+/** Result of storing/updating a chat SSH config. */
+export interface ChatSshConfigSetResult {
+  config: ChatSshConfig;
+  apply_timing: ChatSshConfigApplyTiming;
+}
+
+/** Result of clearing a chat SSH config. */
+export interface ChatSshConfigClearResult {
+  deleted: boolean;
+  apply_timing: ChatSshConfigApplyTiming;
+}
+
 /**
  * Callback invoked by channel adapters when a new inbound message arrives.
  * Registered by the runtime (runtime.ts) and wired to the router/queue pipeline.

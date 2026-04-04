@@ -73,6 +73,18 @@ describe("bundled optional extensions", () => {
     expect(fake.state.tools.get("bun_run")?.description).toContain("workspace Bun script");
   });
 
+  test("ssh-core registers the remote-capable core tool overrides and flags", async () => {
+    const { default: registerSshCore } = await import("../../extensions/integrations/ssh-core/index.ts");
+    const fake = createFakeApi();
+
+    registerSshCore(fake.api);
+
+    expect(fake.state.tools.has("read")).toBe(true);
+    expect(fake.state.tools.has("write")).toBe(true);
+    expect(fake.state.tools.has("edit")).toBe(true);
+    expect(fake.state.tools.has("bash")).toBe(true);
+  });
+
   test("cdp-browser registers the cdp_browser tool and cdp-tabs command", async () => {
     const { default: registerCdpBrowser } = await import("../../extensions/browser/cdp-browser/index.ts");
     const fake = createFakeApi();

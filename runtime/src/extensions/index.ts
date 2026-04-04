@@ -41,6 +41,7 @@ import { sendAdaptiveCard } from "./send-adaptive-card.js";
 import { sendDashboardWidget } from "./send-dashboard-widget.js";
 import { exitProcess } from "./exit-process.js";
 import { autoresearchSupervisor } from "./autoresearch-supervisor.js";
+import { sshTool } from "./ssh.js";
 
 /** Array of all built-in extension factories to register on session creation. */
 export const builtinExtensionFactories: ExtensionFactory[] = [
@@ -59,4 +60,5 @@ export const builtinExtensionFactories: ExtensionFactory[] = [
   sendDashboardWidget,
   exitProcess,
   autoresearchSupervisor,
+  sshTool,
 ];

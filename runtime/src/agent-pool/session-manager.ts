@@ -6,7 +6,7 @@
  * existing map-based cache structure used by callers and tests.
  */
 
-import type { AgentSession, AgentSessionRuntime, ModelRegistry, SettingsManager, AuthStorage } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionRuntime, ExtensionFactory, ModelRegistry, SettingsManager, AuthStorage } from "@mariozechner/pi-coding-agent";
 
 import { createDefaultSession, createSessionInDir, ensureNamedSessionDir, ensureSessionDir } from "./session.js";
 import { seedRotatedSession } from "../session-rotation.js";
@@ -27,6 +27,7 @@ export interface AgentSessionManagerOptions {
   modelRegistry: ModelRegistry;
   settingsManager: SettingsManager;
   createDefaultTools: () => NonNullable<Parameters<typeof createDefaultSession>[1]["tools"]>;
+  getSessionExtensionFactories?: (chatJid: string) => Promise<ExtensionFactory[]>;
   bindSession: (runtime: AgentSessionRuntime, chatJid: string) => Promise<void>;
   ensureBranchRegistration: (chatJid: string, session?: AgentSession | null) => void;
   onInfo?: (message: string, details: Record<string, unknown>) => void;
@@ -63,6 +64,7 @@ export class AgentSessionManager {
 
     const chatSessionDir = ensureSessionDir(chatJid);
 
+    const extensionFactories = await this.options.getSessionExtensionFactories?.(chatJid) ?? [];
     const runtime = this.options.createSession
       ? await this.options.createSession(chatJid, chatSessionDir)
       : await createDefaultSession(chatJid, {
@@ -70,6 +72,7 @@ export class AgentSessionManager {
           modelRegistry: this.options.modelRegistry,
           settingsManager: this.options.settingsManager,
           tools: this.options.createDefaultTools(),
+          extensionFactories,
         });
 
     this.options.pool.set(chatJid, { runtime, lastUsed: Date.now() });
@@ -96,6 +99,7 @@ export class AgentSessionManager {
     });
     const sideSessionDir = ensureNamedSessionDir(chatJid, "btw-side");
 
+    const extensionFactories = await this.options.getSessionExtensionFactories?.(chatJid) ?? [];
     const runtime = this.options.createSideSession
       ? await this.options.createSideSession(chatJid, sideSessionDir)
       : await createSessionInDir(sideSessionDir, {
@@ -103,6 +107,7 @@ export class AgentSessionManager {
           modelRegistry: this.options.modelRegistry,
           settingsManager: this.options.settingsManager,
           tools: this.options.createDefaultTools(),
+          extensionFactories,
         });
 
     this.options.sidePool.set(chatJid, { runtime, lastUsed: Date.now() });
@@ -161,39 +166,45 @@ export class AgentSessionManager {
     }
   }
 
+  async recreate(chatJid: string): Promise<void> {
+    await this.disposeEntry(this.options.pool, chatJid, "recreate.dispose_main_session");
+    await this.disposeEntry(this.options.sidePool, chatJid, "recreate.dispose_side_session", true);
+  }
+
   async shutdown(): Promise<void> {
-    for (const [jid, entry] of this.options.pool) {
-      try {
-        await entry.runtime.dispose();
-        this.options.onInfo?.("Disposed session", {
-          operation: "shutdown.dispose_main_session",
-          chatJid: jid,
-        });
-      } catch (err) {
-        this.options.onError?.("Failed to dispose session during shutdown", {
-          operation: "shutdown.dispose_main_session",
-          chatJid: jid,
-          err,
-        });
-      }
+    for (const jid of [...this.options.pool.keys()]) {
+      await this.disposeEntry(this.options.pool, jid, "shutdown.dispose_main_session");
     }
-    for (const [jid, entry] of this.options.sidePool) {
-      try {
-        await entry.runtime.dispose();
-        this.options.onInfo?.("Disposed side session", {
-          operation: "shutdown.dispose_side_session",
-          chatJid: jid,
-        });
-      } catch (err) {
-        this.options.onError?.("Failed to dispose side session during shutdown", {
-          operation: "shutdown.dispose_side_session",
-          chatJid: jid,
-          err,
-        });
-      }
+    for (const jid of [...this.options.sidePool.keys()]) {
+      await this.disposeEntry(this.options.sidePool, jid, "shutdown.dispose_side_session", true);
     }
     this.options.pool.clear();
     this.options.sidePool.clear();
+  }
+
+  private async disposeEntry(
+    map: Map<string, PoolEntry>,
+    chatJid: string,
+    operation: string,
+    side = false,
+  ): Promise<void> {
+    const entry = map.get(chatJid);
+    if (!entry) return;
+    try {
+      await entry.runtime.dispose();
+      this.options.onInfo?.(side ? "Disposed side session" : "Disposed session", {
+        operation,
+        chatJid,
+      });
+    } catch (err) {
+      this.options.onError?.(side ? "Failed to dispose side session" : "Failed to dispose session", {
+        operation,
+        chatJid,
+        err,
+      });
+    } finally {
+      map.delete(chatJid);
+    }
   }
 
   evictIdle(idleTtlMs: number): void {

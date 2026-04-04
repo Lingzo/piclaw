@@ -34,6 +34,7 @@ export class AgentSessionManager {
             chatJid,
         });
         const chatSessionDir = ensureSessionDir(chatJid);
+        const extensionFactories = await this.options.getSessionExtensionFactories?.(chatJid) ?? [];
         const runtime = this.options.createSession
             ? await this.options.createSession(chatJid, chatSessionDir)
             : await createDefaultSession(chatJid, {
@@ -41,6 +42,7 @@ export class AgentSessionManager {
                 modelRegistry: this.options.modelRegistry,
                 settingsManager: this.options.settingsManager,
                 tools: this.options.createDefaultTools(),
+                extensionFactories,
             });
         this.options.pool.set(chatJid, { runtime, lastUsed: Date.now() });
         await this.applyDefaultModel(runtime.session);
@@ -63,6 +65,7 @@ export class AgentSessionManager {
             chatJid,
         });
         const sideSessionDir = ensureNamedSessionDir(chatJid, "btw-side");
+        const extensionFactories = await this.options.getSessionExtensionFactories?.(chatJid) ?? [];
         const runtime = this.options.createSideSession
             ? await this.options.createSideSession(chatJid, sideSessionDir)
             : await createSessionInDir(sideSessionDir, {
@@ -70,6 +73,7 @@ export class AgentSessionManager {
                 modelRegistry: this.options.modelRegistry,
                 settingsManager: this.options.settingsManager,
                 tools: this.options.createDefaultTools(),
+                extensionFactories,
             });
         this.options.sidePool.set(chatJid, { runtime, lastUsed: Date.now() });
         return runtime;
@@ -126,41 +130,41 @@ export class AgentSessionManager {
             });
         }
     }
+    async recreate(chatJid) {
+        await this.disposeEntry(this.options.pool, chatJid, "recreate.dispose_main_session");
+        await this.disposeEntry(this.options.sidePool, chatJid, "recreate.dispose_side_session", true);
+    }
     async shutdown() {
-        for (const [jid, entry] of this.options.pool) {
-            try {
-                await entry.runtime.dispose();
-                this.options.onInfo?.("Disposed session", {
-                    operation: "shutdown.dispose_main_session",
-                    chatJid: jid,
-                });
-            }
-            catch (err) {
-                this.options.onError?.("Failed to dispose session during shutdown", {
-                    operation: "shutdown.dispose_main_session",
-                    chatJid: jid,
-                    err,
-                });
-            }
+        for (const jid of [...this.options.pool.keys()]) {
+            await this.disposeEntry(this.options.pool, jid, "shutdown.dispose_main_session");
         }
-        for (const [jid, entry] of this.options.sidePool) {
-            try {
-                await entry.runtime.dispose();
-                this.options.onInfo?.("Disposed side session", {
-                    operation: "shutdown.dispose_side_session",
-                    chatJid: jid,
-                });
-            }
-            catch (err) {
-                this.options.onError?.("Failed to dispose side session during shutdown", {
-                    operation: "shutdown.dispose_side_session",
-                    chatJid: jid,
-                    err,
-                });
-            }
+        for (const jid of [...this.options.sidePool.keys()]) {
+            await this.disposeEntry(this.options.sidePool, jid, "shutdown.dispose_side_session", true);
         }
         this.options.pool.clear();
         this.options.sidePool.clear();
+    }
+    async disposeEntry(map, chatJid, operation, side = false) {
+        const entry = map.get(chatJid);
+        if (!entry)
+            return;
+        try {
+            await entry.runtime.dispose();
+            this.options.onInfo?.(side ? "Disposed side session" : "Disposed session", {
+                operation,
+                chatJid,
+            });
+        }
+        catch (err) {
+            this.options.onError?.(side ? "Failed to dispose side session" : "Failed to dispose session", {
+                operation,
+                chatJid,
+                err,
+            });
+        }
+        finally {
+            map.delete(chatJid);
+        }
     }
     evictIdle(idleTtlMs) {
         const now = Date.now();

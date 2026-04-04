@@ -41,9 +41,16 @@ function createRuntime(session: any, overrides: Partial<AgentSessionRuntime> = {
   } as any;
 }
 
-afterEach(() => {
+afterEach(async () => {
   restoreEnv?.();
   restoreEnv = null;
+  try {
+    const sshCore = await import("../../src/extensions/ssh-core.js");
+    sshCore.setSshConnectionResolverForTests(null);
+    await sshCore.unregisterLiveChatSshSession("web:default");
+  } catch {
+    // ignore test cleanup failures for optional SSH state
+  }
 });
 
 test("agent pool aggregates streamed text and writes logs", async () => {
@@ -165,6 +172,65 @@ test("agent pool clears attachments when a run errors", async () => {
   expect(result.status).toBe("error");
   expect(result.attachments).toBeUndefined();
   expect(attachments.take("web:default").length).toBe(0);
+});
+
+test("agent pool stores SSH config for future sessions when no live SSH session exists", async () => {
+  const ws = getTestWorkspace();
+  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+
+  const { initDatabase, getChatSshConfig } = await importFresh<typeof import("../src/db.js")>("../src/db.js");
+  initDatabase();
+  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+
+  let pool: any;
+  let createCalls = 0;
+  let disposed = 0;
+
+  class StubSession {
+    isStreaming = false;
+    isBashRunning = false;
+    isCompacting = false;
+    subscribe(_listener: (event: any) => void) {
+      return () => {};
+    }
+    async prompt(_prompt: string) {
+      this.isStreaming = true;
+      try {
+        const result = await pool.setChatSshConfig("web:other", {
+          ssh_target: "agent@example.com:/srv/project",
+          ssh_port: 22,
+          private_key_keychain: "ssh-prod",
+          known_hosts_keychain: null,
+          strict_host_key_checking: "yes",
+        });
+        expect(result.apply_timing).toBe("next_session");
+        expect(getChatSshConfig("web:other")?.ssh_target).toBe("agent@example.com:/srv/project");
+      } finally {
+        this.isStreaming = false;
+      }
+    }
+    async abort() {}
+    dispose() {
+      disposed += 1;
+    }
+  }
+
+  pool = new AgentPool({
+    createSession: async () => {
+      createCalls += 1;
+      return createRuntime(new StubSession()) as any;
+    },
+  });
+
+  const result = await pool.runAgent("test", "web:default", { timeoutMs: 0 });
+  expect(result.status).toBe("success");
+  expect(disposed).toBe(0);
+  expect((pool as any).pool.has("web:default")).toBe(true);
+
+  await pool.runAgent("test", "web:default", { timeoutMs: 0 });
+  expect(createCalls).toBe(1);
+
+  await pool.shutdown();
 });
 
 test("agent pool evicts idle sessions and recreates them", async () => {

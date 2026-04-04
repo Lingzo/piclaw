@@ -19,6 +19,7 @@ import { fileURLToPath } from "url";
 import {
   type AgentSessionRuntime,
   type CreateAgentSessionRuntimeFactory,
+  type ExtensionFactory,
   createAgentSessionFromServices,
   createAgentSessionRuntime,
   createAgentSessionServices,
@@ -37,6 +38,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 type AgentSessionCreateOptions = {
   tools: NonNullable<NonNullable<Parameters<typeof createAgentSessionFromServices>[0]>["tools"]>;
+  extensionFactories?: ExtensionFactory[];
 };
 
 /**
@@ -120,6 +122,7 @@ export async function createSessionInDir(
     modelRegistry: ModelRegistry;
     settingsManager: SettingsManager;
     tools: NonNullable<AgentSessionCreateOptions["tools"]>;
+    extensionFactories?: ExtensionFactory[];
   }
 ): Promise<AgentSessionRuntime> {
   const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
@@ -130,7 +133,7 @@ export async function createSessionInDir(
       modelRegistry: options.modelRegistry,
       settingsManager: options.settingsManager,
       resourceLoaderOptions: {
-        extensionFactories: builtinExtensionFactories,
+        extensionFactories: [...builtinExtensionFactories, ...(options.extensionFactories ?? [])],
         additionalExtensionPaths: getBundledExtensionPaths(),
       },
     });
@@ -164,6 +167,7 @@ export async function createDefaultSession(
     modelRegistry: ModelRegistry;
     settingsManager: SettingsManager;
     tools: NonNullable<AgentSessionCreateOptions["tools"]>;
+    extensionFactories?: ExtensionFactory[];
   }
 ): Promise<AgentSessionRuntime> {
   const chatSessionDir = ensureSessionDir(chatJid);

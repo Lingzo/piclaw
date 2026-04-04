@@ -55,6 +55,11 @@ export const TOOLSETS: ToolsetDefinition[] = [
     toolNames: ["schedule_task", "bun_run", "exec_batch", "search_tool_output"],
   },
   {
+    name: "remote",
+    description: "Remote execution configuration and remote-capable core tool setup.",
+    toolNames: ["ssh"],
+  },
+  {
     name: "browser",
     description: "Browser automation via Chrome DevTools Protocol.",
     toolNames: ["cdp_browser"],
