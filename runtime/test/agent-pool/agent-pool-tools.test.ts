@@ -73,6 +73,7 @@ describe("builtin extension factories", () => {
     expect(fake.tools.has("start_autoresearch")).toBe(true);
     expect(fake.tools.has("stop_autoresearch")).toBe(true);
     expect(fake.tools.has("autoresearch_status")).toBe(true);
+    expect(fake.tools.has("ssh")).toBe(true);
 
     // Commands from scheduled-tasks + ui-theme extensions
     expect(fake.commands.has("tasks")).toBe(true);
@@ -82,6 +83,6 @@ describe("builtin extension factories", () => {
   });
 
   test("factories array has expected length", () => {
-    expect(builtinExtensionFactories.length).toBe(15);
+    expect(builtinExtensionFactories.length).toBe(16);
   });
 });

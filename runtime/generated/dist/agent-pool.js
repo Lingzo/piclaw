@@ -28,6 +28,9 @@ import { createTrackedBashOperations } from "./tools/tracked-bash.js";
 import { runSidePrompt as runSidePromptInternal } from "./agent-pool/side-prompt-runner.js";
 import { runAgentPrompt } from "./agent-pool/run-agent-orchestrator.js";
 import { createAgentPoolServices } from "./agent-pool/service-factory.js";
+import { deleteChatSshConfig, getChatSshConfig, upsertChatSshConfig, } from "./db.js";
+import { setSshToolHandlers } from "./extensions/ssh.js";
+import { applyLiveChatSshConfig, clearLiveChatSshConfig, hasLiveChatSshSession, resolveSshCoreConfigFromChatConfig } from "./extensions/ssh-core.js";
 import { createLogger } from "./utils/logger.js";
 const log = createLogger("agent-pool");
 /** How long (ms) an idle session stays cached before being disposed. */
@@ -96,6 +99,11 @@ export class AgentPool {
             onError: (message, details) => log.error(message, details),
         }));
         this.sideStreamSimple = options.sideStreamSimple;
+        setSshToolHandlers({
+            get: (chatJid) => this.getChatSshConfig(chatJid),
+            set: (chatJid, config) => this.setChatSshConfig(chatJid, config),
+            clear: (chatJid) => this.clearChatSshConfig(chatJid),
+        });
         mkdirSync(SESSIONS_DIR, { recursive: true });
         mkdirSync(this.logsDir, { recursive: true });
         this.cleanupTimer = setInterval(() => this.sessionManager.evictIdle(IDLE_TTL), CLEANUP_INTERVAL);
@@ -213,6 +221,25 @@ export class AgentPool {
     /** Execute a raw slash command in the AgentSession (extension commands). */
     async applySlashCommand(chatJid, rawText) {
         return this.runtimeFacade.applySlashCommand(chatJid, rawText);
+    }
+    getChatSshConfig(chatJid) {
+        return getChatSshConfig(chatJid);
+    }
+    async setChatSshConfig(chatJid, config) {
+        const apply_timing = hasLiveChatSshSession(chatJid) ? "immediate" : "next_session";
+        if (apply_timing === "immediate") {
+            await applyLiveChatSshConfig(chatJid, resolveSshCoreConfigFromChatConfig(config));
+        }
+        const next = upsertChatSshConfig({ chat_jid: chatJid, ...config });
+        return { config: next, apply_timing };
+    }
+    async clearChatSshConfig(chatJid) {
+        const apply_timing = hasLiveChatSshSession(chatJid) ? "immediate" : "next_session";
+        const deleted = deleteChatSshConfig(chatJid);
+        if (apply_timing === "immediate") {
+            await clearLiveChatSshConfig(chatJid);
+        }
+        return { deleted, apply_timing };
     }
     /** Gracefully shut down all sessions. */
     async shutdown() {

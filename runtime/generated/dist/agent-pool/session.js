@@ -102,7 +102,7 @@ export async function createSessionInDir(sessionDir, options) {
             modelRegistry: options.modelRegistry,
             settingsManager: options.settingsManager,
             resourceLoaderOptions: {
-                extensionFactories: builtinExtensionFactories,
+                extensionFactories: [...builtinExtensionFactories, ...(options.extensionFactories ?? [])],
                 additionalExtensionPaths: getBundledExtensionPaths(),
             },
         });

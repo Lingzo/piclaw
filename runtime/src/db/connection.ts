@@ -206,6 +206,19 @@ function createSchema(database: Database): void {
     CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_created_at ON scheduled_tasks(created_at);
     CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_last_run ON scheduled_tasks(last_run);
 
+    CREATE TABLE IF NOT EXISTS chat_ssh_configs (
+      chat_jid TEXT PRIMARY KEY,
+      ssh_target TEXT NOT NULL,
+      ssh_port INTEGER NOT NULL DEFAULT 22,
+      private_key_keychain TEXT NOT NULL,
+      known_hosts_keychain TEXT,
+      strict_host_key_checking TEXT NOT NULL DEFAULT 'yes',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (chat_jid) REFERENCES chats(jid)
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_ssh_configs_updated_at ON chat_ssh_configs(updated_at);
+
     CREATE TABLE IF NOT EXISTS task_run_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       task_id TEXT NOT NULL,

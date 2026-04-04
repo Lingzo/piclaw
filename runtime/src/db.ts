@@ -64,6 +64,12 @@ export {
   getTaskRunLogs,
 } from "./db/tasks.js";
 export {
+  getChatSshConfig,
+  upsertChatSshConfig,
+  deleteChatSshConfig,
+  listChatSshConfigs,
+} from "./db/chat-ssh-configs.js";
+export {
   storeToolOutput,
   insertToolOutputChunk,
   getToolOutputById,
@@ -120,3 +126,9 @@ export type {
   InteractionRow,
   ToolOutputRecord,
 } from "./db/types.js";
+export type {
+  ChatSshConfig,
+  ChatSshConfigApplyTiming,
+  ChatSshConfigClearResult,
+  ChatSshConfigSetResult,
+} from "./types.js";

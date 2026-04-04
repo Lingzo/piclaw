@@ -2,6 +2,8 @@
  * agent-pool/service-factory.ts – Constructor wiring for AgentPool helper services.
  */
 import { getAttachmentRegistry } from "./attachments.js";
+import { getChatSshConfig } from "../db.js";
+import { createChatSshCoreExtension, resolveSshCoreConfigFromChatConfig } from "../extensions/ssh-core.js";
 import { AgentBranchManager } from "./branch-manager.js";
 import { AgentRuntimeFacade } from "./runtime-facade.js";
 import { AgentSessionBinder } from "./session-binder.js";
@@ -9,6 +11,18 @@ import { AgentSessionManager } from "./session-manager.js";
 import { AgentToolFactory } from "./tool-factory.js";
 import { AgentTurnCoordinator } from "./turn-coordinator.js";
 import { recordMessageUsage } from "./usage.js";
+async function resolveSessionExtensionFactories(chatJid) {
+    let sshConfig;
+    try {
+        sshConfig = getChatSshConfig(chatJid);
+    }
+    catch (error) {
+        if (!(error instanceof Error) || error.message !== "Database not initialized") {
+            throw error;
+        }
+    }
+    return [createChatSshCoreExtension(chatJid, sshConfig ? resolveSshCoreConfigFromChatConfig(sshConfig) : null)];
+}
 /**
  * Assemble the extracted helper services used by AgentPool.
  * Keeps constructor wiring in one place so AgentPool itself remains a thin façade.
@@ -63,6 +77,7 @@ export function createAgentPoolServices(options) {
         modelRegistry: options.modelRegistry,
         settingsManager: options.settingsManager,
         createDefaultTools: () => toolFactory.createDefaultTools(),
+        getSessionExtensionFactories: (chatJid) => resolveSessionExtensionFactories(chatJid),
         bindSession: (runtime, chatJid) => sessionBinder.bindSession(runtime, chatJid),
         ensureBranchRegistration: (chatJid, session) => {
             branchManager.ensureBranchRegistration(chatJid, session);

@@ -79,6 +79,36 @@ test("AgentSessionManager creates, caches, and binds main sessions", async () =>
   expect(fixture.pool.get("web:default")?.runtime.session).toBe(session);
 });
 
+test("AgentSessionManager recreates cached main and side sessions", async () => {
+  let disposed = 0;
+  const mainSession = {
+    isStreaming: false,
+    isBashRunning: false,
+    isCompacting: false,
+    dispose() {
+      disposed += 1;
+    },
+  };
+  const sideSession = {
+    isStreaming: false,
+    isBashRunning: false,
+    isCompacting: false,
+    dispose() {
+      disposed += 1;
+    },
+  };
+
+  const fixture = createManager();
+  fixture.pool.set("web:default", { runtime: createRuntime(mainSession), lastUsed: Date.now() });
+  fixture.sidePool.set("web:default", { runtime: createRuntime(sideSession), lastUsed: Date.now() });
+
+  await fixture.manager.recreate("web:default");
+
+  expect(fixture.pool.has("web:default")).toBe(false);
+  expect(fixture.sidePool.has("web:default")).toBe(false);
+  expect(disposed).toBe(2);
+});
+
 test("AgentSessionManager evicts idle sessions and shuts down remaining sessions", async () => {
   let disposed = 0;
   const oldSession = {

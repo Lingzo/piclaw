@@ -2,9 +2,11 @@
  * agent-pool/service-factory.ts – Constructor wiring for AgentPool helper services.
  */
 
-import type { AuthStorage, ModelRegistry, SettingsManager } from "@mariozechner/pi-coding-agent";
+import type { AuthStorage, ExtensionFactory, ModelRegistry, SettingsManager } from "@mariozechner/pi-coding-agent";
 
 import { getAttachmentRegistry } from "./attachments.js";
+import { getChatSshConfig } from "../db.js";
+import { createChatSshCoreExtension, resolveSshCoreConfigFromChatConfig } from "../extensions/ssh-core.js";
 import { AgentBranchManager } from "./branch-manager.js";
 import { AgentRuntimeFacade } from "./runtime-facade.js";
 import { AgentSessionBinder } from "./session-binder.js";
@@ -45,6 +47,18 @@ export interface AgentPoolServices {
   sessionManager: AgentSessionManager;
   runtimeFacade: AgentRuntimeFacade;
   branchManager: AgentBranchManager;
+}
+
+async function resolveSessionExtensionFactories(chatJid: string): Promise<ExtensionFactory[]> {
+  let sshConfig: ReturnType<typeof getChatSshConfig> | undefined;
+  try {
+    sshConfig = getChatSshConfig(chatJid);
+  } catch (error) {
+    if (!(error instanceof Error) || error.message !== "Database not initialized") {
+      throw error;
+    }
+  }
+  return [createChatSshCoreExtension(chatJid, sshConfig ? resolveSshCoreConfigFromChatConfig(sshConfig) : null)];
 }
 
 /**
@@ -101,6 +115,7 @@ export function createAgentPoolServices(options: AgentPoolServiceFactoryOptions)
     modelRegistry: options.modelRegistry,
     settingsManager: options.settingsManager,
     createDefaultTools: () => toolFactory.createDefaultTools(),
+    getSessionExtensionFactories: (chatJid) => resolveSessionExtensionFactories(chatJid),
     bindSession: (runtime, chatJid) => sessionBinder.bindSession(runtime, chatJid),
     ensureBranchRegistration: (chatJid, session) => {
       branchManager.ensureBranchRegistration(chatJid, session);
