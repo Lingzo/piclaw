@@ -8,7 +8,6 @@ import { Timeline } from '../components/timeline.js';
 import { WorkspaceExplorer } from '../components/workspace-explorer.js';
 import { TabStrip } from '../components/tab-strip.js';
 import { MarkdownPreview } from '../components/markdown-preview.js';
-import { LanguageSwitcher } from '../components/language-switcher.js';
 import { t } from '../utils/i18n.js';
 
 export interface MainShellRenderOptions {
