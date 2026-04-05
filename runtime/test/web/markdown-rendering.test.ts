@@ -33,3 +33,21 @@ test('prepareMarkdownSource preserves blockquote markers while escaping raw tags
   expect(safeHtml).toContain('&lt;script>alert(1)&lt;/script>');
   expect(safeHtml).not.toContain('&gt; `/login`');
 });
+
+test('prepareMarkdownSource restores allowed ruby, br, and span tags', async () => {
+  globalThis.DOMParser = class {
+    parseFromString(input: string) {
+      return { documentElement: { textContent: decodeEntities(input) } } as any;
+    }
+  } as any;
+
+  const { prepareMarkdownSource } = await import('../../web/src/markdown.ts');
+  const { safeHtml } = prepareMarkdownSource('<ruby>状況把握<rt>じょうきょうはあく</rt></ruby><br/><span lang="ja" title="x > y">日本語</span>');
+
+  expect(safeHtml).toContain('<ruby>状況把握<rt>じょうきょうはあく</rt></ruby>');
+  expect(safeHtml).toContain('<br>');
+  expect(safeHtml).toContain('<span lang="ja" title="x &gt; y">日本語</span>');
+  expect(safeHtml).not.toContain('&lt;ruby&gt;');
+  expect(safeHtml).not.toContain('&lt;br/');
+  expect(safeHtml).not.toContain('&lt;span');
+});

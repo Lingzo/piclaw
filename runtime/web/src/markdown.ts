@@ -331,7 +331,7 @@ function extractRestorableAttributes(tagName, rawAttrs) {
 
 function restoreAllowedHtmlTags(text) {
     if (!text) return text;
-    return text.replace(/&lt;([\s\S]*?)&gt;/g, (match, content) => {
+    return text.replace(/&lt;((?:[^"'<>]|"[^"]*"|'[^']*')*?)(?:&gt;|>)/g, (match, content) => {
         const trimmed = content.trim();
         const isClosing = trimmed.startsWith('/');
         const rawTag = isClosing ? trimmed.slice(1).trim() : trimmed;
