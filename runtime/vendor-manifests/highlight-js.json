@@ -1,0 +1,17 @@
+{
+  "id": "highlight-js",
+  "packageName": "highlight.js",
+  "sourceEntry": "web/src/vendor/highlight-js-entry.ts",
+  "outputFile": "web/static/js/vendor/highlight.min.js",
+  "metadataFile": "web/static/js/vendor/highlight.meta.json",
+  "buildCommand": [
+    "bun",
+    "build",
+    "$SOURCE_ENTRY",
+    "--target=browser",
+    "--format=iife",
+    "--minify",
+    "--outfile",
+    "$OUTPUT_FILE"
+  ]
+}

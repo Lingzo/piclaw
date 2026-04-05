@@ -308,6 +308,21 @@ function normalizeHtmlCodeTags(text) {
     });
 }
 
+function applySyntaxHighlighting(html) {
+    if (!html || !globalThis.hljs) return html;
+    return html.replace(/<pre><code(?:\s+class="language-(\w+)")?>([\s\S]*?)<\/code><\/pre>/g,
+        (match, lang, code) => {
+            const language = lang && globalThis.hljs.getLanguage(lang) ? lang : 'plaintext';
+            let highlighted: string;
+            try {
+                highlighted = globalThis.hljs.highlight(code, { language }).value;
+            } catch {
+                highlighted = code;
+            }
+            return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>`;
+        });
+}
+
 const RESTORABLE_HTML_ATTRS = {
     span: new Set(['title', 'class', 'lang', 'dir']),
 };
@@ -544,6 +559,9 @@ export function renderMarkdown(text, onHashtagClick, options = {}) {
 
     html_content = decodeCodeEntities(html_content);
     html_content = decodeTextEntities(html_content);
+
+    // Apply syntax highlighting to code blocks
+    html_content = applySyntaxHighlighting(html_content);
 
     // Render math expressions
     html_content = renderMath(html_content);

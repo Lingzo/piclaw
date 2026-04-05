@@ -410,6 +410,10 @@
     line-height: 1.2;
 }
 
+.post-content pre code.hljs {
+    background: transparent;
+}
+
 .post-code-copy-btn {
     position: absolute;
     top: 8px;
