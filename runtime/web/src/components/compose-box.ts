@@ -1823,9 +1823,9 @@ export function ComposeBox({
                                             type="button"
                                             class=${`compose-model-popup-btn primary${sessionPopupEntries.findIndex((entry) => entry.key === 'action:new') === sessionPopupIndex ? ' active' : ''}`}
                                             onClick=${() => { void handleCreateSession(); }}
-                                            title="Create a new agent/session branch from this chat"
+                                            title=${t('newSession')}
                                         >
-                                            New
+                                            ${t('new')}
                                         </button>
                                     `}
                                     ${canRenameSession && html`

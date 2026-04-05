@@ -118,6 +118,17 @@ export interface Translations {
   openVncInTab: string;
   showTerminalDock: string;
   hideTerminalDock: string;
+  newSession: string;
+  new: string;
+  injectQueuedFollowup: string;
+  cancelQueuedMessage: string;
+  clearAttachments: string;
+  openChatOnlyWindow: string;
+  deleteThisBranch: string;
+  searchScope: string;
+  shareLocation: string;
+  attachFile: string;
+  sendEnter: string;
 }
 
 const translations: Record<Locale, Translations> = {
@@ -237,6 +248,17 @@ const translations: Record<Locale, Translations> = {
     openVncInTab: 'Open VNC in tab',
     showTerminalDock: 'Show terminal dock',
     hideTerminalDock: 'Hide terminal dock',
+    newSession: 'New',
+    new: 'New',
+    injectQueuedFollowup: 'Inject queued follow-up as steer',
+    cancelQueuedMessage: 'Cancel queued message',
+    clearAttachments: 'Clear all attachments and references',
+    openChatOnlyWindow: 'Open this chat in a new chat-only window',
+    deleteThisBranch: 'Delete this branch',
+    searchScope: 'Search scope',
+    shareLocation: 'Share location',
+    attachFile: 'Attach file',
+    sendEnter: 'Send (Enter)',
   },
   zh: {
     appTitle: 'PiClaw',
@@ -354,6 +376,17 @@ const translations: Record<Locale, Translations> = {
     openVncInTab: '在标签页打开VNC',
     showTerminalDock: '显示终端面板',
     hideTerminalDock: '隐藏终端面板',
+    newSession: '新建',
+    new: '新建',
+    injectQueuedFollowup: '注入排队的跟进作为转向',
+    cancelQueuedMessage: '取消排队的消息',
+    clearAttachments: '清除所有附件和引用',
+    openChatOnlyWindow: '在新聊天窗口中打开此聊天',
+    deleteThisBranch: '删除此分支',
+    searchScope: '搜索范围',
+    shareLocation: '分享位置',
+    attachFile: '附加文件',
+    sendEnter: '发送 (Enter)',
   },
 };
 
