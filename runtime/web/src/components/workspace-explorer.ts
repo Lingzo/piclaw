@@ -2083,9 +2083,9 @@ export function WorkspaceExplorer({
                                     ${showHidden ? t('hideHiddenFiles') : t('showHiddenFiles')}
                                 </button>
                                 <div class="workspace-menu-separator"></div>
-                                <div class="workspace-menu-item workspace-menu-language">
+                                <button class="workspace-menu-item" role="menuitem" onClick=${() => {}}>
                                     <${LanguageSwitcher} />
-                                </div>
+                                </button>
 
                                 ${(onOpenTerminalTab || onOpenVncTab || onToggleTerminal) && html`<div class="workspace-menu-separator"></div>`}
                                 ${onOpenTerminalTab && html`

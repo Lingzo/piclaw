@@ -268,31 +268,29 @@
     background: var(--border-color);
 }
 
-.workspace-menu-language {
-    padding: 0 4px;
-}
 
-.language-switcher-select {
+
+.workspace-menu-item .language-switcher-select {
     appearance: none;
-    border: 1px solid transparent;
+    -webkit-appearance: none;
+    border: none;
     background: transparent;
     color: var(--text-primary);
     font-size: 13px;
     line-height: 1.35;
     text-align: left;
-    border-radius: var(--radius-sm);
-    padding: 8px 10px;
-    min-height: 36px;
+    padding: 0;
+    min-height: auto;
     cursor: pointer;
     width: 100%;
+    display: block;
 }
 
-.language-switcher-select:hover {
-    background: var(--bg-secondary);
-    border-color: var(--border-color);
+.workspace-menu-item .language-switcher-select:hover {
+    background: transparent;
 }
 
-.language-switcher-select:focus-visible {
+.workspace-menu-item .language-switcher-select:focus-visible {
     outline: 2px solid var(--accent-color);
     outline-offset: 2px;
 }
