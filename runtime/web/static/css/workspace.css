@@ -287,8 +287,8 @@
     background: var(--bg-primary);
     color: var(--text-primary);
     padding: 4px 8px;
-    font: inherit;
-    font-size: var(--font-size-sm);
+    font-size: 13px;
+    line-height: 1.35;
     cursor: pointer;
 }
 
