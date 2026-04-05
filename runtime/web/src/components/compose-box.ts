@@ -1145,6 +1145,30 @@ export function ComposeBox({
 
     const handleKeyDown = (e) => {
         if (e.isComposing) return;
+        
+        // Allow Tab to insert tab character when no popups are showing
+        if (e.key === 'Tab' && !showMention && !showSlash && !showModelPopup && !showSessionPopup) {
+            const textarea = textareaRef.current;
+            if (textarea) {
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const value = textarea.value;
+                const newValue = value.substring(0, start) + '\t' + value.substring(end);
+                const newPosition = start + 1;
+                if (searchMode) {
+                    setSearchText(newValue);
+                } else {
+                    setContent(newValue);
+                }
+                requestAnimationFrame(() => {
+                    textarea.selectionStart = newPosition;
+                    textarea.selectionEnd = newPosition;
+                });
+            }
+            e.preventDefault();
+            return;
+        }
+        
         if (searchMode && e.key === 'Escape') {
             e.preventDefault();
             setSearchText('');
