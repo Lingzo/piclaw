@@ -269,27 +269,27 @@
 }
 
 .workspace-menu-language {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-sm);
-    padding: 6px 12px;
-}
-
-.workspace-menu-language-label {
-    font-size: var(--workspace-tree-font-size);
-    color: var(--text-secondary);
+    padding: 0 4px;
 }
 
 .language-switcher-select {
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background: var(--bg-primary);
+    appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
     color: var(--text-primary);
-    padding: 4px 8px;
     font-size: 13px;
     line-height: 1.35;
+    text-align: left;
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    min-height: 36px;
     cursor: pointer;
+    width: 100%;
+}
+
+.language-switcher-select:hover {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
 }
 
 .language-switcher-select:focus-visible {

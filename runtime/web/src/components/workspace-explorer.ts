@@ -2084,7 +2084,6 @@ export function WorkspaceExplorer({
                                 </button>
                                 <div class="workspace-menu-separator"></div>
                                 <div class="workspace-menu-item workspace-menu-language">
-                                    <span class="workspace-menu-language-label">${t('language')}</span>
                                     <${LanguageSwitcher} />
                                 </div>
 
