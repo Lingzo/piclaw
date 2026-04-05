@@ -129,6 +129,12 @@ export interface Translations {
   shareLocation: string;
   attachFile: string;
   sendEnter: string;
+  renameCurrent: string;
+  deleteCurrent: string;
+  renameBranchHandle: string;
+  deletePruneBranch: string;
+  deleteFile: string;
+  deleteMessage: string;
 }
 
 const translations: Record<Locale, Translations> = {
@@ -259,6 +265,12 @@ const translations: Record<Locale, Translations> = {
     shareLocation: 'Share location',
     attachFile: 'Attach file',
     sendEnter: 'Send (Enter)',
+    renameCurrent: 'Rename current…',
+    deleteCurrent: 'Delete current…',
+    renameBranchHandle: 'Rename the current branch handle',
+    deletePruneBranch: 'Delete (prune) current agent/session branch',
+    deleteFile: 'Delete file',
+    deleteMessage: 'Delete message',
   },
   zh: {
     appTitle: 'PiClaw',
@@ -387,6 +399,12 @@ const translations: Record<Locale, Translations> = {
     shareLocation: '分享位置',
     attachFile: '附加文件',
     sendEnter: '发送 (Enter)',
+    renameCurrent: '重命名当前…',
+    deleteCurrent: '删除当前…',
+    renameBranchHandle: '重命名当前分支',
+    deletePruneBranch: '删除（修剪）当前代理/会话分支',
+    deleteFile: '删除文件',
+    deleteMessage: '删除消息',
   },
 };
 

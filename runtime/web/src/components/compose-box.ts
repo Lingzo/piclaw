@@ -1833,10 +1833,10 @@ export function ComposeBox({
                                             type="button"
                                             class=${`compose-model-popup-btn${sessionPopupEntries.findIndex((entry) => entry.key === 'action:rename') === sessionPopupIndex ? ' active' : ''}`}
                                             onClick=${(e) => { void handleRenameSession(e); }}
-                                            title="Rename the current branch handle"
+                                            title=${t('renameBranchHandle')}
                                             disabled=${renameInProgress}
                                         >
-                                            Rename current…
+                                            ${t('renameCurrent')}
                                         </button>
                                     `}
                                     ${canDeleteSession && html`
@@ -1844,9 +1844,9 @@ export function ComposeBox({
                                             type="button"
                                             class=${`compose-model-popup-btn danger${sessionPopupEntries.findIndex((entry) => entry.key === 'action:delete') === sessionPopupIndex ? ' active' : ''}`}
                                             onClick=${() => { void handleDeleteSession(); }}
-                                            title="Delete (prune) current agent/session branch"
+                                            title=${t('deletePruneBranch')}
                                         >
-                                            Delete current…
+                                            ${t('deleteCurrent')}
                                         </button>
                                     `}
                                 </div>
