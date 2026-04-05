@@ -37,3 +37,4 @@ artifacts/web-control-plane-fuzz/
 runtime/artifacts/agent-control-fuzz/
 runtime/artifacts/web-control-plane-fuzz/
 runtime/extensions/node_modules
+runtime/web/static/dist/
