@@ -9,6 +9,8 @@ export function LanguageSwitcher() {
     setLocale(target.value as Locale);
   };
 
+  const currentLang = languages.find(l => l.code === locale) || languages[0];
+
   return html`
     <select 
       class="language-switcher-select"
@@ -17,7 +19,7 @@ export function LanguageSwitcher() {
       aria-label=${t('language')}
     >
       ${languages.map((lang) => html`
-        <option value=${lang.code}>${lang.name}</option>
+        <option value=${lang.code} key=${lang.code}>${lang.name}</option>
       `)}
     </select>
   `;
