@@ -22,6 +22,8 @@ import {
     resolveWorkspaceScale,
 } from '../ui/workspace-scale.js';
 import { hasSpecializedWorkspaceTab, shouldAutoOpenWorkspaceFile } from '../ui/workspace-auto-open.js';
+import { t, useTranslation } from '../utils/i18n.js';
+import { LanguageSwitcher } from './language-switcher.js';
 
 const REFRESH_INTERVAL_MS = 60000;
 
@@ -570,6 +572,7 @@ export function WorkspaceExplorer({
         ...readWorkspaceScaleEnvironment(),
     }));
     const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+    const { t } = useTranslation();
 
     // ── Stable refs (never trigger re-renders) ────────────────────────────────
     const expandedRef     = useRef(expanded);
@@ -2073,27 +2076,32 @@ export function WorkspaceExplorer({
                         </button>
                         ${headerMenuOpen && html`
                             <div class="workspace-menu-dropdown" ref=${headerMenuRef} role="menu" aria-label="Workspace options">
-                                <button class="workspace-menu-item" role="menuitem" onClick=${handleMenuCreateFile} disabled=${uploading}>New file</button>
-                                <button class="workspace-menu-item" role="menuitem" onClick=${handleMenuUploadFiles} disabled=${uploading}>Upload files</button>
-                                <button class="workspace-menu-item" role="menuitem" onClick=${handleMenuRefresh}>Refresh tree</button>
+                                <button class="workspace-menu-item" role="menuitem" onClick=${handleMenuCreateFile} disabled=${uploading}>${t('newFile')}</button>
+                                <button class="workspace-menu-item" role="menuitem" onClick=${handleMenuUploadFiles} disabled=${uploading}>${t('upload')}</button>
+                                <button class="workspace-menu-item" role="menuitem" onClick=${handleMenuRefresh}>${t('refresh')}</button>
                                 <button class=${`workspace-menu-item${showHidden ? ' active' : ''}`} role="menuitem" onClick=${handleMenuToggleHidden}>
-                                    ${showHidden ? 'Hide hidden files' : 'Show hidden files'}
+                                    ${showHidden ? t('hideHiddenFiles') : t('showHiddenFiles')}
                                 </button>
+                                <div class="workspace-menu-separator"></div>
+                                <div class="workspace-menu-item workspace-menu-language">
+                                    <span class="workspace-menu-language-label">${t('language')}</span>
+                                    <${LanguageSwitcher} />
+                                </div>
 
                                 ${(onOpenTerminalTab || onOpenVncTab || onToggleTerminal) && html`<div class="workspace-menu-separator"></div>`}
                                 ${onOpenTerminalTab && html`
                                     <button class="workspace-menu-item" role="menuitem" onClick=${handleMenuOpenTerminalTab}>
-                                        Open terminal in tab
+                                        ${t('openTerminalInTab')}
                                     </button>
                                 `}
                                 ${onOpenVncTab && html`
                                     <button class="workspace-menu-item" role="menuitem" onClick=${handleMenuOpenVncTab}>
-                                        Open VNC in tab
+                                        ${t('openVncInTab')}
                                     </button>
                                 `}
                                 ${onToggleTerminal && html`
                                     <button class="workspace-menu-item" role="menuitem" onClick=${handleMenuToggleTerminal}>
-                                        ${terminalVisible ? 'Hide terminal dock' : 'Show terminal dock'}
+                                        ${terminalVisible ? t('hideTerminalDock') : t('showTerminalDock')}
                                     </button>
                                 `}
 

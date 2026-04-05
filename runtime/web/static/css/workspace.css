@@ -268,6 +268,35 @@
     background: var(--border-color);
 }
 
+.workspace-menu-language {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    padding: 6px 12px;
+}
+
+.workspace-menu-language-label {
+    font-size: var(--workspace-tree-font-size);
+    color: var(--text-secondary);
+}
+
+.language-switcher-select {
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    padding: 4px 8px;
+    font: inherit;
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+}
+
+.language-switcher-select:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}
+
 .workspace-download:disabled,
 .workspace-edit:disabled,
 .workspace-delete:disabled,

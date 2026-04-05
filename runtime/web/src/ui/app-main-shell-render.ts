@@ -8,6 +8,8 @@ import { Timeline } from '../components/timeline.js';
 import { WorkspaceExplorer } from '../components/workspace-explorer.js';
 import { TabStrip } from '../components/tab-strip.js';
 import { MarkdownPreview } from '../components/markdown-preview.js';
+import { LanguageSwitcher } from '../components/language-switcher.js';
+import { t } from '../utils/i18n.js';
 
 export interface MainShellRenderOptions {
   [key: string]: any;
@@ -366,11 +368,11 @@ export function renderMainShell(options: MainShellRenderOptions): any {
                   class="chat-window-header-button"
                   type="button"
                   onClick=${openRenameCurrentBranchForm}
-                  title=${isRenamingBranch ? 'Renaming branch…' : 'Rename this branch'}
+                  title=${isRenamingBranch ? t('renamingBranch') : t('renameThisBranch')}
                   aria-label="Rename this branch"
                   disabled=${isRenamingBranch}
                 >
-                  ${isRenamingBranch ? 'Renaming…' : 'Rename'}
+                  ${isRenamingBranch ? t('renamingBranch') : t('rename')}
                 </button>
               `}
               ${currentBranchRecord?.chat_jid && currentBranchRecord.chat_jid !== (currentBranchRecord.root_chat_jid || currentBranchRecord.chat_jid) && html`
@@ -378,13 +380,13 @@ export function renderMainShell(options: MainShellRenderOptions): any {
                   class="chat-window-header-button"
                   type="button"
                   onClick=${handlePruneCurrentBranch}
-                  title="Prune this branch agent"
+                  title=${t('pruneThisBranch')}
                   aria-label="Prune this branch agent"
                 >
-                  Prune
+                  ${t('prune')}
                 </button>
               `}
-              <span class="chat-window-header-badge">Chat only</span>
+              <span class="chat-window-header-badge">${t('chatOnly')}</span>
             </div>
           </div>
         `}

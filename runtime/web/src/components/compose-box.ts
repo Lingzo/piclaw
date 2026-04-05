@@ -9,6 +9,7 @@ import { formatBranchPickerLabel, formatCurrentBranchLabel } from '../ui/branch-
 import { buildComposeStatusDotClass } from '../ui/status-dot.js';
 import { getStatusElapsedLabel, isCompactionStatus, resolveStatusPanelTitle } from '../ui/status-duration.js';
 import { FilePill } from './file-pill.js';
+import { t, useTranslation } from '../utils/i18n.js';
 
 /**
  * Slash command definitions for autocomplete.
@@ -432,6 +433,7 @@ export function ComposeBox({
     const [footerWidth, setFooterWidth] = useState(0);
     const [submitError, setSubmitError] = useState(null);
     const [statusNoticeNowMs, setStatusNoticeNowMs] = useState(() => Date.now());
+    const { t } = useTranslation();
     const textareaRef = useRef(null);
     const slashRef = useRef(null);
     const mentionRef = useRef(null);
@@ -1676,7 +1678,7 @@ export function ComposeBox({
                     `}
                     <textarea
                         ref=${textareaRef}
-                        placeholder=${searchMode ? "Search (Enter to run)..." : "Message (Enter to send, Shift+Enter for newline)..."}
+                        placeholder=${searchMode ? "Search (Enter to run)..." : t('typeMessage')}
                         value=${searchMode ? searchText : content}
                         onInput=${handleInput}
                         onKeyDown=${handleKeyDown}
