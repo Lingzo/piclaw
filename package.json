@@ -130,6 +130,7 @@
     "eslint": "10.0.3",
     "globals": "17.4.0",
     "playwright": "^1.58.2",
+    "prettier": "^3.8.1",
     "ts-prune": "^0.10.3",
     "typescript": "5.9.3"
   },
