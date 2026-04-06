@@ -34,8 +34,12 @@ artifacts/baseline-quality-deterministic/
 artifacts/queue-session-threading-replay/
 artifacts/agent-control-fuzz/
 artifacts/web-control-plane-fuzz/
+artifacts/add-tests-core-config-and-keychain/
+artifacts/vnc-harness/
 runtime/artifacts/agent-control-fuzz/
 runtime/artifacts/web-control-plane-fuzz/
+artifacts/extract-typed-config-objects/
+artifacts/reduce-code-duplication-and-prune-redundant-tests/
 runtime/extensions/node_modules
 runtime/web/static/dist/
 runtime/web/static/js
