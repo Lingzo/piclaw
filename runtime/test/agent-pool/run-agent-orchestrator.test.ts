@@ -1,25 +1,14 @@
 import { expect, test } from "bun:test";
 
 import { DEFAULT_COMPACTION_SETTINGS } from "@mariozechner/pi-coding-agent";
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 
 import { getAttachmentRegistry } from "../../src/agent-pool/attachments.js";
 import { AgentTurnCoordinator } from "../../src/agent-pool/turn-coordinator.js";
 import { runAgentPrompt } from "../../src/agent-pool/run-agent-orchestrator.js";
 
-function createRuntime(session: any): AgentSessionRuntime {
-  return {
-    session,
-    cwd: "/workspace",
-    diagnostics: [],
-    services: {} as any,
-    modelFallbackMessage: undefined,
-    newSession: async () => ({ cancelled: false }),
-    switchSession: async () => ({ cancelled: false }),
-    fork: async () => ({ cancelled: false }),
-    importFromJsonl: async () => ({ cancelled: false }),
-    dispose: async () => {},
-  } as any;
+function createRuntime(session: any): AgentSession {
+  return session as any;
 }
 
 test("runAgentPrompt aggregates deltas and returns pending attachments", async () => {
@@ -48,8 +37,14 @@ test("runAgentPrompt aggregates deltas and returns pending attachments", async (
         sourcePath: "/tmp/out.txt",
       });
       for (const listener of this.listeners) {
-        listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "hello" } });
-        listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: " world" } });
+        listener({
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", delta: "hello" },
+        });
+        listener({
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", delta: " world" },
+        });
       }
     }
     async abort() {}
@@ -63,19 +58,24 @@ test("runAgentPrompt aggregates deltas and returns pending attachments", async (
     recordMessageUsage: () => {},
   });
 
-  const result = await runAgentPrompt("test", "web:default", { timeoutMs: 0 }, {
-    getOrCreateRuntime: async () => createRuntime(session) as any,
-    turnCoordinator,
-    clearAttachments: (chatJid) => attachments.clear(chatJid),
-    takeAttachments: (chatJid) => attachments.take(chatJid),
-    logsDir: process.env.PICLAW_WORKSPACE || "/workspace",
-    setActiveForkBaseLeaf: (_chatJid, leafId) => {
-      forkStates.push(leafId);
+  const result = await runAgentPrompt(
+    "test",
+    "web:default",
+    { timeoutMs: 0 },
+    {
+      getOrCreateRuntime: async () => createRuntime(session) as any,
+      turnCoordinator,
+      clearAttachments: (chatJid) => attachments.clear(chatJid),
+      takeAttachments: (chatJid) => attachments.take(chatJid),
+      logsDir: process.env.PICLAW_WORKSPACE || "/workspace",
+      setActiveForkBaseLeaf: (_chatJid, leafId) => {
+        forkStates.push(leafId);
+      },
+      clearActiveForkBaseLeaf: () => {
+        forkStates.push(null);
+      },
     },
-    clearActiveForkBaseLeaf: () => {
-      forkStates.push(null);
-    },
-  });
+  );
 
   expect(result.status).toBe("success");
   expect(result.result).toBe("hello world");
@@ -91,9 +91,7 @@ test("runAgentPrompt auto-compacts before prompting when estimated context excee
     sessionManager = {
       getLeafId: () => "leaf-1",
       buildSessionContext: () => ({
-        messages: [
-          { role: "user", content: "x".repeat(200) },
-        ],
+        messages: [{ role: "user", content: "x".repeat(200) }],
       }),
     };
     settingsManager = {
@@ -119,7 +117,10 @@ test("runAgentPrompt auto-compacts before prompting when estimated context excee
     async prompt() {
       calls.push("prompt");
       for (const listener of this.listeners) {
-        listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "done" } });
+        listener({
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", delta: "done" },
+        });
       }
     }
     async abort() {}
@@ -132,15 +133,20 @@ test("runAgentPrompt auto-compacts before prompting when estimated context excee
     recordMessageUsage: () => {},
   });
 
-  const result = await runAgentPrompt("test", "web:default", { timeoutMs: 0 }, {
-    getOrCreateRuntime: async () => createRuntime(session) as any,
-    turnCoordinator,
-    clearAttachments: () => {},
-    takeAttachments: () => [],
-    logsDir: process.env.PICLAW_WORKSPACE || "/workspace",
-    setActiveForkBaseLeaf: () => {},
-    clearActiveForkBaseLeaf: () => {},
-  });
+  const result = await runAgentPrompt(
+    "test",
+    "web:default",
+    { timeoutMs: 0 },
+    {
+      getOrCreateRuntime: async () => createRuntime(session) as any,
+      turnCoordinator,
+      clearAttachments: () => {},
+      takeAttachments: () => [],
+      logsDir: process.env.PICLAW_WORKSPACE || "/workspace",
+      setActiveForkBaseLeaf: () => {},
+      clearActiveForkBaseLeaf: () => {},
+    },
+  );
 
   expect(result.status).toBe("success");
   expect(calls).toEqual(["compact", "prompt"]);
@@ -154,9 +160,7 @@ test("runAgentPrompt skips pre-prompt auto-compaction when it is disabled", asyn
     sessionManager = {
       getLeafId: () => "leaf-1",
       buildSessionContext: () => ({
-        messages: [
-          { role: "user", content: "x".repeat(200) },
-        ],
+        messages: [{ role: "user", content: "x".repeat(200) }],
       }),
     };
     settingsManager = {
@@ -182,7 +186,10 @@ test("runAgentPrompt skips pre-prompt auto-compaction when it is disabled", asyn
     async prompt() {
       calls.push("prompt");
       for (const listener of this.listeners) {
-        listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "done" } });
+        listener({
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", delta: "done" },
+        });
       }
     }
     async abort() {}
@@ -195,15 +202,20 @@ test("runAgentPrompt skips pre-prompt auto-compaction when it is disabled", asyn
     recordMessageUsage: () => {},
   });
 
-  const result = await runAgentPrompt("test", "web:default", { timeoutMs: 0 }, {
-    getOrCreateRuntime: async () => createRuntime(session) as any,
-    turnCoordinator,
-    clearAttachments: () => {},
-    takeAttachments: () => [],
-    logsDir: process.env.PICLAW_WORKSPACE || "/workspace",
-    setActiveForkBaseLeaf: () => {},
-    clearActiveForkBaseLeaf: () => {},
-  });
+  const result = await runAgentPrompt(
+    "test",
+    "web:default",
+    { timeoutMs: 0 },
+    {
+      getOrCreateRuntime: async () => createRuntime(session) as any,
+      turnCoordinator,
+      clearAttachments: () => {},
+      takeAttachments: () => [],
+      logsDir: process.env.PICLAW_WORKSPACE || "/workspace",
+      setActiveForkBaseLeaf: () => {},
+      clearActiveForkBaseLeaf: () => {},
+    },
+  );
 
   expect(result.status).toBe("success");
   expect(calls).toEqual(["prompt"]);

@@ -2,11 +2,17 @@
  * agent-pool/run-agent-orchestrator.ts – Main runAgent prompt lifecycle orchestration.
  */
 
-import { shouldCompact, type AgentSession, type AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import {
+  shouldCompact,
+  type AgentSession,
+} from "@mariozechner/pi-coding-agent";
 
 import type { AttachmentInfo } from "./attachments.js";
 
-import { getAgentRuntimeConfig, getSessionStorageConfig } from "../core/config.js";
+import {
+  getAgentRuntimeConfig,
+  getSessionStorageConfig,
+} from "../core/config.js";
 import { detectChannel } from "../router.js";
 import { pruneOrphanToolResults } from "./orphan-tool-results.js";
 import { writeAgentLog } from "./logging.js";
@@ -18,7 +24,7 @@ import type { AgentOutput, RunAgentOptions } from "./contracts.js";
 
 /** Dependencies required to run a main agent prompt. */
 export interface RunAgentOrchestratorOptions {
-  getOrCreateRuntime: (chatJid: string) => Promise<AgentSessionRuntime>;
+  getOrCreateRuntime: (chatJid: string) => Promise<AgentSession>;
   turnCoordinator: AgentTurnCoordinator;
   clearAttachments: (chatJid: string) => void;
   takeAttachments: (chatJid: string) => AttachmentInfo[];
@@ -32,19 +38,26 @@ export interface RunAgentOrchestratorOptions {
 
 async function maybeAutoRotateSession(
   session: AgentSession,
-  runtime: AgentSessionRuntime,
+  runtime: AgentSession,
   chatJid: string,
   options: Pick<RunAgentOrchestratorOptions, "onInfo" | "onWarn">,
 ): Promise<void> {
   const sessionStorageConfig = getSessionStorageConfig();
-  const autoRotateEnabled = sessionStorageConfig.autoRotate
-    || ["1", "true", "yes", "on"].includes((process.env.PICLAW_SESSION_AUTO_ROTATE || "").trim().toLowerCase());
+  const autoRotateEnabled =
+    sessionStorageConfig.autoRotate ||
+    ["1", "true", "yes", "on"].includes(
+      (process.env.PICLAW_SESSION_AUTO_ROTATE || "").trim().toLowerCase(),
+    );
   if (!autoRotateEnabled) return;
 
-  const envThresholdMb = parseInt(process.env.PICLAW_SESSION_MAX_SIZE_MB || "", 10);
-  const thresholdBytes = Number.isFinite(envThresholdMb) && envThresholdMb > 0
-    ? envThresholdMb * 1024 * 1024
-    : sessionStorageConfig.maxSizeBytes;
+  const envThresholdMb = parseInt(
+    process.env.PICLAW_SESSION_MAX_SIZE_MB || "",
+    10,
+  );
+  const thresholdBytes =
+    Number.isFinite(envThresholdMb) && envThresholdMb > 0
+      ? envThresholdMb * 1024 * 1024
+      : sessionStorageConfig.maxSizeBytes;
 
   const sessionFileSize = getSessionFileSize(session.sessionFile);
   if (sessionFileSize === null || sessionFileSize < thresholdBytes) return;
@@ -76,11 +89,14 @@ function estimateMessageTokens(message: any): number {
     let chars = 0;
     for (const block of value) {
       if (!block || typeof block !== "object") continue;
-      if (block.type === "text" && typeof block.text === "string") chars += block.text.length;
-      if (block.type === "thinking" && typeof block.thinking === "string") chars += block.thinking.length;
+      if (block.type === "text" && typeof block.text === "string")
+        chars += block.text.length;
+      if (block.type === "thinking" && typeof block.thinking === "string")
+        chars += block.thinking.length;
       if (block.type === "toolCall") {
         chars += typeof block.name === "string" ? block.name.length : 0;
-        if (block.arguments !== undefined) chars += JSON.stringify(block.arguments).length;
+        if (block.arguments !== undefined)
+          chars += JSON.stringify(block.arguments).length;
       }
       if (block.type === "image") chars += 4800;
     }
@@ -95,13 +111,16 @@ function estimateMessageTokens(message: any): number {
     case "user":
       return Math.ceil(countText(message.content) / 4);
     case "bashExecution": {
-      const chars = (typeof message.command === "string" ? message.command.length : 0)
-        + (typeof message.output === "string" ? message.output.length : 0);
+      const chars =
+        (typeof message.command === "string" ? message.command.length : 0) +
+        (typeof message.output === "string" ? message.output.length : 0);
       return Math.ceil(chars / 4);
     }
     case "branchSummary":
     case "compactionSummary":
-      return Math.ceil(((typeof message.summary === "string" ? message.summary.length : 0)) / 4);
+      return Math.ceil(
+        (typeof message.summary === "string" ? message.summary.length : 0) / 4,
+      );
     default:
       return 0;
   }
@@ -112,17 +131,27 @@ function estimateContextTokensFromSession(session: AgentSession): number {
   if (typeof usage?.tokens === "number") return usage.tokens;
 
   const context = session.sessionManager.buildSessionContext();
-  return context.messages.reduce((total: number, message: any) => total + estimateMessageTokens(message), 0);
+  return context.messages.reduce(
+    (total: number, message: any) => total + estimateMessageTokens(message),
+    0,
+  );
 }
 
 function getModelContextWindow(session: AgentSession): number | null {
-  const model = session.model as (AgentSession["model"] & { contextLength?: number }) | undefined;
-  const contextWindow = typeof model?.contextWindow === "number"
-    ? model.contextWindow
-    : typeof model?.contextLength === "number"
-      ? model.contextLength
-      : null;
-  if (typeof contextWindow !== "number" || !Number.isFinite(contextWindow) || contextWindow <= 0) {
+  const model = session.model as
+    | (AgentSession["model"] & { contextLength?: number })
+    | undefined;
+  const contextWindow =
+    typeof model?.contextWindow === "number"
+      ? model.contextWindow
+      : typeof model?.contextLength === "number"
+        ? model.contextLength
+        : null;
+  if (
+    typeof contextWindow !== "number" ||
+    !Number.isFinite(contextWindow) ||
+    contextWindow <= 0
+  ) {
     return null;
   }
   return contextWindow;
@@ -137,12 +166,20 @@ async function maybeAutoCompactSessionBeforePrompt(
   const contextWindow = getModelContextWindow(session);
   if (contextWindow == null) return;
 
-  const settingsManager = (session as AgentSession & {
-    settingsManager?: { getCompactionSettings?: () => { enabled?: boolean; reserveTokens?: number } };
-  }).settingsManager;
-  const settings = typeof settingsManager?.getCompactionSettings === "function"
-    ? settingsManager.getCompactionSettings()
-    : null;
+  const settingsManager = (
+    session as AgentSession & {
+      settingsManager?: {
+        getCompactionSettings?: () => {
+          enabled?: boolean;
+          reserveTokens?: number;
+        };
+      };
+    }
+  ).settingsManager;
+  const settings =
+    typeof settingsManager?.getCompactionSettings === "function"
+      ? settingsManager.getCompactionSettings()
+      : null;
   if (!settings?.enabled) return;
 
   try {
@@ -178,13 +215,14 @@ export async function runAgentPrompt(
 
   try {
     const runtime = await options.getOrCreateRuntime(chatJid);
-    const session = runtime.session;
+    const session = runtime;
     await maybeAutoRotateSession(session, runtime, chatJid, options);
     await maybeAutoCompactSessionBeforePrompt(session, chatJid, options);
     pruneOrphanToolResults(session, chatJid);
-    const forkBaseLeafId = typeof session.sessionManager?.getLeafId === "function"
-      ? session.sessionManager.getLeafId()
-      : null;
+    const forkBaseLeafId =
+      typeof session.sessionManager?.getLeafId === "function"
+        ? session.sessionManager.getLeafId()
+        : null;
     options.setActiveForkBaseLeaf(chatJid, forkBaseLeafId ?? null);
     options.onInfo?.("Prompting session", {
       operation: "run_agent.prompt",
@@ -192,10 +230,22 @@ export async function runAgentPrompt(
       promptLength: prompt.length,
     });
 
-    const tracker = options.turnCoordinator.createTracker(chatJid, runOptions.onTurnComplete);
-    const unsub = options.turnCoordinator.subscribe(session, chatJid, tracker, runOptions.onEvent);
-    const timeoutMs = typeof runOptions.timeoutMs === "number" ? runOptions.timeoutMs : getAgentRuntimeConfig().timeoutMs;
-    const { timeoutId, timedOutRef } = options.turnCoordinator.startPromptTimeout(session, chatJid, timeoutMs);
+    const tracker = options.turnCoordinator.createTracker(
+      chatJid,
+      runOptions.onTurnComplete,
+    );
+    const unsub = options.turnCoordinator.subscribe(
+      session,
+      chatJid,
+      tracker,
+      runOptions.onEvent,
+    );
+    const timeoutMs =
+      typeof runOptions.timeoutMs === "number"
+        ? runOptions.timeoutMs
+        : getAgentRuntimeConfig().timeoutMs;
+    const { timeoutId, timedOutRef } =
+      options.turnCoordinator.startPromptTimeout(session, chatJid, timeoutMs);
 
     const channel = detectChannel(chatJid);
     return await withChatContext(chatJid, channel, async () => {
@@ -211,10 +261,21 @@ export async function runAgentPrompt(
       const finalText = tracker.getFinalText();
       const finalAttachments = options.takeAttachments(chatJid);
       const timedOut = timedOutRef.value;
-      writeAgentLog(options.logsDir, chatJid, duration, timedOut, finalText, null);
+      writeAgentLog(
+        options.logsDir,
+        chatJid,
+        duration,
+        timedOut,
+        finalText,
+        null,
+      );
 
       if (timedOut) {
-        return { status: "error", result: null, error: `Timed out after ${formatTimeoutDuration(timeoutMs)}` };
+        return {
+          status: "error",
+          result: null,
+          error: `Timed out after ${formatTimeoutDuration(timeoutMs)}`,
+        };
       }
 
       options.onInfo?.("Agent run completed", {

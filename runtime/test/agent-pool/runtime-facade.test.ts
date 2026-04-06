@@ -1,24 +1,15 @@
 import { expect, test } from "bun:test";
 
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { AgentRuntimeFacade } from "../../src/agent-pool/runtime-facade.js";
 
-function createRuntime(session: any): AgentSessionRuntime {
-  return {
-    session,
-    cwd: "/workspace",
-    diagnostics: [],
-    services: {} as any,
-    modelFallbackMessage: undefined,
-    newSession: async () => ({ cancelled: false }),
-    switchSession: async () => ({ cancelled: false }),
-    fork: async () => ({ cancelled: false }),
-    importFromJsonl: async () => ({ cancelled: false }),
-    dispose: async () => {},
-  } as any;
+function createRuntime(session: any): AgentSession {
+  return session as any;
 }
 
-function createFacade(overrides: Partial<ConstructorParameters<typeof AgentRuntimeFacade>[0]> = {}) {
+function createFacade(
+  overrides: Partial<ConstructorParameters<typeof AgentRuntimeFacade>[0]> = {},
+) {
   const pool = new Map<string, { runtime: any; lastUsed: number }>();
   const warnings: string[] = [];
   const errors: string[] = [];
@@ -54,21 +45,41 @@ test("AgentRuntimeFacade reports available models and context usage", async () =
     thinkingLevel: "high",
     getContextUsage: () => ({ tokens: 10, contextWindow: 100, percent: 10 }),
     modelRegistry: {
-      refresh: () => { refreshCalls += 1; },
+      refresh: () => {
+        refreshCalls += 1;
+      },
       getAvailable: () => [
-        { provider: "openai", id: "gpt-test", name: "GPT Test", contextWindow: 128000, reasoning: true },
-        { provider: "anthropic", id: "claude-test", name: "Claude Test", contextWindow: 200000, reasoning: true },
+        {
+          provider: "openai",
+          id: "gpt-test",
+          name: "GPT Test",
+          contextWindow: 128000,
+          reasoning: true,
+        },
+        {
+          provider: "anthropic",
+          id: "claude-test",
+          name: "Claude Test",
+          contextWindow: 200000,
+          reasoning: true,
+        },
       ],
     },
   };
 
   const fixture = createFacade();
-  fixture.pool.set("web:default", { runtime: createRuntime(session), lastUsed: Date.now() });
+  fixture.pool.set("web:default", {
+    runtime: createRuntime(session),
+    lastUsed: Date.now(),
+  });
 
   const available = await fixture.facade.getAvailableModels("web:default");
   expect(refreshCalls).toBe(1);
   expect(available.current).toBe("openai/gpt-test");
-  expect(available.models).toEqual(["openai/gpt-test", "anthropic/claude-test"]);
+  expect(available.models).toEqual([
+    "openai/gpt-test",
+    "anthropic/claude-test",
+  ]);
   expect(available.model_options).toEqual([
     {
       label: "openai/gpt-test",
@@ -101,16 +112,24 @@ test("AgentRuntimeFacade removes one queued follow-up and replays the remaining 
   const session = {
     isStreaming: true,
     getFollowUpMessages: () => ["first", "second", "third"],
-    clearQueue: () => ({ steering: ["keep steer"], followUp: ["first", "second", "third"] }),
+    clearQueue: () => ({
+      steering: ["keep steer"],
+      followUp: ["first", "second", "third"],
+    }),
     prompt: async (text: string, options?: { streamingBehavior?: string }) => {
       prompts.push({ text, behavior: options?.streamingBehavior ?? "" });
     },
   };
 
   const fixture = createFacade();
-  fixture.pool.set("web:default", { runtime: createRuntime(session), lastUsed: Date.now() });
+  fixture.pool.set("web:default", {
+    runtime: createRuntime(session),
+    lastUsed: Date.now(),
+  });
 
-  await expect(fixture.facade.removeQueuedFollowupMessage("web:default", "second")).resolves.toBe(true);
+  await expect(
+    fixture.facade.removeQueuedFollowupMessage("web:default", "second"),
+  ).resolves.toBe(true);
   expect(prompts).toEqual([
     { text: "keep steer", behavior: "steer" },
     { text: "first", behavior: "followUp" },
@@ -121,15 +140,26 @@ test("AgentRuntimeFacade removes one queued follow-up and replays the remaining 
 test("AgentRuntimeFacade clears attachments around slash commands", async () => {
   const session = { marker: true };
   const fixture = createFacade({
-    executeSlashCommandFn: async (incomingSession, chatJid, rawText) => ({
-      ok: incomingSession === session,
-      chatJid,
-      rawText,
-    } as any),
+    executeSlashCommandFn: async (incomingSession, chatJid, rawText) =>
+      ({
+        ok: incomingSession === session,
+        chatJid,
+        rawText,
+      }) as any,
   });
-  fixture.pool.set("web:default", { runtime: createRuntime(session), lastUsed: Date.now() });
+  fixture.pool.set("web:default", {
+    runtime: createRuntime(session),
+    lastUsed: Date.now(),
+  });
 
-  const result = await fixture.facade.applySlashCommand("web:default", "/tasks");
-  expect(result).toEqual({ ok: true, chatJid: "web:default", rawText: "/tasks" });
+  const result = await fixture.facade.applySlashCommand(
+    "web:default",
+    "/tasks",
+  );
+  expect(result).toEqual({
+    ok: true,
+    chatJid: "web:default",
+    rawText: "/tasks",
+  });
   expect(fixture.cleared).toEqual(["web:default", "web:default"]);
 });

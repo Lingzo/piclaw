@@ -6,8 +6,19 @@
  */
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { AgentSession, AgentSessionRuntime, SessionContext, SessionManager } from "@mariozechner/pi-coding-agent";
-import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "fs";
+import type {
+  AgentSession,
+  SessionContext,
+  SessionManager,
+} from "@mariozechner/pi-coding-agent";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "fs";
 import { basename, dirname, extname, join } from "path";
 import { formatBytes } from "./agent-control/agent-control-helpers.js";
 
@@ -36,7 +47,9 @@ export const ROTATION_COMPACTION_INSTRUCTIONS = [
 ].join(" ");
 
 /** Return the byte size for a persisted session file, or null if unavailable. */
-export function getSessionFileSize(sessionFile: string | undefined): number | null {
+export function getSessionFileSize(
+  sessionFile: string | undefined,
+): number | null {
   if (!sessionFile) return null;
   try {
     return statSync(sessionFile).size;
@@ -70,7 +83,9 @@ export function forcePersistSessionFile(session: AgentSession): void {
   if (!sessionFile || !header) return;
 
   const entries = session.sessionManager.getEntries();
-  const content = [header, ...entries].map((entry) => JSON.stringify(entry)).join("\n");
+  const content = [header, ...entries]
+    .map((entry) => JSON.stringify(entry))
+    .join("\n");
   writeFileSync(sessionFile, `${content}\n`);
 }
 
@@ -84,7 +99,10 @@ export function isRotationFallbackCompactionError(message: string): boolean {
 }
 
 /** Build a carried-forward summary from compaction and branch-summary messages. */
-export function collectCarriedSummary(messages: readonly AgentMessage[]): { summary: string | null; tokensBefore: number } {
+export function collectCarriedSummary(messages: readonly AgentMessage[]): {
+  summary: string | null;
+  tokensBefore: number;
+} {
   const parts: string[] = [];
   let tokensBefore = 0;
 
@@ -97,7 +115,10 @@ export function collectCarriedSummary(messages: readonly AgentMessage[]): { summ
     }
   }
 
-  const summary = parts.map((part) => part.trim()).filter(Boolean).join("\n\n");
+  const summary = parts
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("\n\n");
   return {
     summary: summary || null,
     tokensBefore,
@@ -111,23 +132,33 @@ export function seedRotatedSession(
   options: {
     sessionName?: string;
     model?: { provider: string; modelId: string } | null;
-  }
+  },
 ): void {
   if (options.sessionName?.trim()) {
     sessionManager.appendSessionInfo(options.sessionName.trim());
   }
 
   if (options.model) {
-    sessionManager.appendModelChange(options.model.provider, options.model.modelId);
+    sessionManager.appendModelChange(
+      options.model.provider,
+      options.model.modelId,
+    );
   }
 
   const carried = collectCarriedSummary(context.messages);
   if (carried.summary) {
-    sessionManager.appendCompaction(carried.summary, "rotated-context", carried.tokensBefore);
+    sessionManager.appendCompaction(
+      carried.summary,
+      "rotated-context",
+      carried.tokensBefore,
+    );
   }
 
   for (const message of context.messages) {
-    if (message.role === "compactionSummary" || message.role === "branchSummary") {
+    if (
+      message.role === "compactionSummary" ||
+      message.role === "branchSummary"
+    ) {
       continue;
     }
 
@@ -136,7 +167,7 @@ export function seedRotatedSession(
         message.customType,
         message.content,
         message.display,
-        message.details
+        message.details,
       );
       continue;
     }
@@ -148,8 +179,8 @@ export function seedRotatedSession(
 /** Rotate a persisted session into a newly-seeded successor session file. */
 export async function rotateSession(
   session: AgentSession,
-  runtime: AgentSessionRuntime,
-  options: { instructions?: string; reason?: SessionRotationReason } = {}
+  runtime: AgentSession,
+  options: { instructions?: string; reason?: SessionRotationReason } = {},
 ): Promise<SessionRotationResult> {
   const reason = options.reason ?? "manual";
 
@@ -158,7 +189,8 @@ export async function rotateSession(
       status: "error",
       reason,
       compacted: false,
-      message: "Cannot rotate the session while a response, compaction, or retry is active.",
+      message:
+        "Cannot rotate the session while a response, compaction, or retry is active.",
     };
   }
 
@@ -167,7 +199,8 @@ export async function rotateSession(
       status: "error",
       reason,
       compacted: false,
-      message: "Cannot rotate the session while queued steering or follow-up messages are pending.",
+      message:
+        "Cannot rotate the session while queued steering or follow-up messages are pending.",
     };
   }
 
@@ -190,7 +223,8 @@ export async function rotateSession(
     };
   }
 
-  const compactionInstructions = options.instructions?.trim() || ROTATION_COMPACTION_INSTRUCTIONS;
+  const compactionInstructions =
+    options.instructions?.trim() || ROTATION_COMPACTION_INSTRUCTIONS;
   let compacted = false;
   try {
     await session.compact(compactionInstructions);
@@ -225,20 +259,29 @@ export async function rotateSession(
       },
     });
 
-    if (result.cancelled) {
+    if (!result) {
       if (archived) rmSync(archivePath, { force: true });
-      return { status: "error", reason, compacted, message: "Session rotation cancelled." };
+      return {
+        status: "error",
+        reason,
+        compacted,
+        message: "Session rotation cancelled.",
+      };
     }
 
-    const activeSession = runtime.session;
+    const activeSession = runtime;
     forcePersistSessionFile(activeSession);
     rmSync(previousSessionFile, { force: true });
 
     const nextSessionFile = activeSession.sessionFile || "(unavailable)";
     const nextSize = getSessionFileSize(activeSession.sessionFile);
-    const summaryCount = collectCarriedSummary(context.messages).summary ? 1 : 0;
+    const summaryCount = collectCarriedSummary(context.messages).summary
+      ? 1
+      : 0;
     const carriedMessageCount = context.messages.filter(
-      (message) => message.role !== "compactionSummary" && message.role !== "branchSummary"
+      (message) =>
+        message.role !== "compactionSummary" &&
+        message.role !== "branchSummary",
     ).length;
 
     return {

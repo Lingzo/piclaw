@@ -1,8 +1,12 @@
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { mkdirSync, writeFileSync, rmSync, readdirSync } from "fs";
 import { dirname, join } from "path";
 
-export const DEFAULT_TEST_MODEL = { provider: "openai", id: "gpt-test", reasoning: true } as any;
+export const DEFAULT_TEST_MODEL = {
+  provider: "openai",
+  id: "gpt-test",
+  reasoning: true,
+} as any;
 
 export function cleanupRotatedSessionArtifacts(cwd: string): void {
   for (const entry of readdirSync(cwd)) {
@@ -23,7 +27,10 @@ export function createTestAuthStorage() {
   };
 }
 
-export function createTestModelRegistry(models: any[] = [DEFAULT_TEST_MODEL], authStorage = createTestAuthStorage()) {
+export function createTestModelRegistry(
+  models: any[] = [DEFAULT_TEST_MODEL],
+  authStorage = createTestAuthStorage(),
+) {
   return {
     refresh: () => {},
     getAvailable: () => models,
@@ -32,23 +39,138 @@ export function createTestModelRegistry(models: any[] = [DEFAULT_TEST_MODEL], au
   } as any;
 }
 
-export function createTestSessionRuntime(session: TestAgentControlSession): AgentSessionRuntime {
+export function createTestSessionRuntime(
+  session: TestAgentControlSession,
+): AgentSession {
   return {
     session: session as any,
     cwd: session.rootDir,
     diagnostics: [],
     services: {} as any,
     modelFallbackMessage: undefined,
-    newSession: async (options?: { parentSession?: string; setup?: (sessionManager: any) => Promise<void> | void }) => ({
+    get model() {
+      return session.model;
+    },
+    set model(v) {
+      session.model = v;
+    },
+    get thinkingLevel() {
+      return session.thinkingLevel;
+    },
+    set thinkingLevel(v) {
+      session.thinkingLevel = v;
+    },
+    get isStreaming() {
+      return session.isStreaming;
+    },
+    set isStreaming(v) {
+      session.isStreaming = v;
+    },
+    get isCompacting() {
+      return session.isCompacting;
+    },
+    set isCompacting(v) {
+      session.isCompacting = v;
+    },
+    get isRetrying() {
+      return session.isRetrying;
+    },
+    set isRetrying(v) {
+      session.isRetrying = v;
+    },
+    get isBashRunning() {
+      return session.isBashRunning;
+    },
+    set isBashRunning(v) {
+      session.isBashRunning = v;
+    },
+    get autoCompactionEnabled() {
+      return session.autoCompactionEnabled;
+    },
+    set autoCompactionEnabled(v) {
+      session.autoCompactionEnabled = v;
+    },
+    get autoRetryEnabled() {
+      return session.autoRetryEnabled;
+    },
+    set autoRetryEnabled(v) {
+      session.autoRetryEnabled = v;
+    },
+    get sessionFile() {
+      return session.sessionFile;
+    },
+    set sessionFile(v) {
+      session.sessionFile = v;
+    },
+    get steeringMode() {
+      return session.steeringMode;
+    },
+    get followUpMode() {
+      return session.followUpMode;
+    },
+    get pendingMessageCount() {
+      return session.pendingMessageCount;
+    },
+    get sessionId() {
+      return session.sessionId;
+    },
+    get sessionName() {
+      return session.sessionName;
+    },
+    set sessionName(v) {
+      session.sessionName = v;
+    },
+    get promptTemplates() {
+      return session.promptTemplates;
+    },
+    get resourceLoader() {
+      return session.resourceLoader;
+    },
+    get extensionRunner() {
+      return session.extensionRunner;
+    },
+    getSteeringMessages: () => session.getSteeringMessages(),
+    getFollowUpMessages: () => session.getFollowUpMessages(),
+    getSessionStats: () => session.getSessionStats(),
+    getContextUsage: () => session.getContextUsage(),
+    getLastAssistantText: () => session.getLastAssistantText(),
+    supportsThinking: () => session.supportsThinking(),
+    setSteeringMode: (mode: "all" | "one-at-a-time") =>
+      session.setSteeringMode(mode),
+    setFollowUpMode: (mode: "all" | "one-at-a-time") =>
+      session.setFollowUpMode(mode),
+    compact: async (instructions?: string) => session.compact(),
+    setAutoCompactionEnabled: (enabled: boolean) =>
+      session.setAutoCompactionEnabled(enabled),
+    setAutoRetryEnabled: (enabled: boolean) =>
+      session.setAutoRetryEnabled(enabled),
+    setSessionName: (name: string) => session.setSessionName(name),
+    cycleModel: () => session.cycleModel(),
+    cycleThinkingLevel: () => session.cycleThinkingLevel(),
+    prompt: async (text: string, options?: any) => {
+      session.promptCalls.push({ text, options });
+      return { result: "ok" } as any;
+    },
+    abort: () => session.abort(),
+    abortRetry: () => session.abortRetry(),
+    abortBash: () => session.abortBash(),
+    abortCompaction: () => session.abortCompaction(),
+    sessionManager: {
+      buildSessionContext: () => session.sessionContext,
+    } as any,
+    newSession: async (options?: {
+      parentSession?: string;
+      setup?: (sessionManager: any) => Promise<void> | void;
+    }) => ({
       cancelled: !(await session.newSession(options)),
     }),
-    switchSession: async (path: string) => ({
-      cancelled: !(await session.switchSession(path)),
+    switchSession: async () => ({
+      cancelled: !(await session.switchSession()),
     }),
-    fork: async (entryId: string) => session.fork(entryId),
+    fork: async () => session.fork(),
     importFromJsonl: async () => ({ cancelled: false }),
     dispose: async () => {
-      session.dispose();
+      (session as any).dispose?.();
     },
   } as any;
 }
@@ -87,11 +209,23 @@ export class TestAgentControlSession {
   resourceLoader: any;
   modelRegistry: any;
 
-  constructor(readonly rootDir: string, modelRegistry: any = createTestModelRegistry()) {
+  constructor(
+    readonly rootDir: string,
+    modelRegistry: any = createTestModelRegistry(),
+  ) {
     this.modelRegistry = modelRegistry;
-    this.sessionFile = join(rootDir, "data", "sessions", "web_default", "state-session.jsonl");
+    this.sessionFile = join(
+      rootDir,
+      "data",
+      "sessions",
+      "web_default",
+      "state-session.jsonl",
+    );
     mkdirSync(dirname(this.sessionFile), { recursive: true });
-    writeFileSync(this.sessionFile, '{"type":"session","id":"state","version":3}\n');
+    writeFileSync(
+      this.sessionFile,
+      '{"type":"session","id":"state","version":3}\n',
+    );
     this.sessionContext = {
       messages: [
         {
@@ -99,7 +233,20 @@ export class TestAgentControlSession {
           content: [{ type: "text", text: "Rotated context" }],
           provider: "openai",
           model: "gpt-test",
-          usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+          usage: {
+            input: 10,
+            output: 5,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 15,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
           stopReason: "stop",
           timestamp: Date.now(),
         },
@@ -113,13 +260,24 @@ export class TestAgentControlSession {
           name: "ext",
           invocationName: "ext",
           description: "Extension command",
-          sourceInfo: { path: "/ext", source: "extension", scope: "user", origin: "top-level" },
+          sourceInfo: {
+            path: "/ext",
+            source: "extension",
+            scope: "user",
+            origin: "top-level",
+          },
         },
       ],
       getCommand: (name: string) => (name === "ext" ? { name: "ext" } : null),
     };
-    this.promptTemplates = [{ name: "template", description: "Template command" }];
-    this.resourceLoader = { getSkills: () => ({ skills: [{ name: "demo", description: "Demo skill" }] }) };
+    this.promptTemplates = [
+      { name: "template", description: "Template command" },
+    ];
+    this.resourceLoader = {
+      getSkills: () => ({
+        skills: [{ name: "demo", description: "Demo skill" }],
+      }),
+    };
   }
 
   getSteeringMessages() {
@@ -149,7 +307,13 @@ export class TestAgentControlSession {
       toolCalls: 1,
       toolResults: 0,
       totalMessages: 3,
-      tokens: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, total: 150 },
+      tokens: {
+        input: 100,
+        output: 50,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 150,
+      },
       cost: 0.12,
     } as any;
   }
@@ -167,13 +331,31 @@ export class TestAgentControlSession {
     if (this.compactError) throw this.compactError;
     this.sessionContext = {
       messages: [
-        { role: "compactionSummary", summary: "Summary", tokensBefore: 1200, timestamp: Date.now() },
+        {
+          role: "compactionSummary",
+          summary: "Summary",
+          tokensBefore: 1200,
+          timestamp: Date.now(),
+        },
         {
           role: "assistant",
           content: [{ type: "text", text: "Rotated context" }],
           provider: "openai",
           model: "gpt-test",
-          usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+          usage: {
+            input: 10,
+            output: 5,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 15,
+            cost: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              total: 0,
+            },
+          },
           stopReason: "stop",
           timestamp: Date.now(),
         },
@@ -181,7 +363,11 @@ export class TestAgentControlSession {
       thinkingLevel: "low",
       model: { provider: "openai", modelId: "gpt-test" },
     };
-    return { tokensBefore: 1200, firstKeptEntryId: "entry-1", summary: "Summary" } as any;
+    return {
+      tokensBefore: 1200,
+      firstKeptEntryId: "entry-1",
+      summary: "Summary",
+    } as any;
   }
 
   setAutoCompactionEnabled(enabled: boolean) {
@@ -237,23 +423,58 @@ export class TestAgentControlSession {
   }
 
   async executeBash() {
-    return { output: "ok", exitCode: 0, truncated: false, cancelled: false } as any;
+    return {
+      output: "ok",
+      exitCode: 0,
+      truncated: false,
+      cancelled: false,
+    } as any;
   }
 
   setSessionName(name: string) {
     this.sessionName = name;
   }
 
-  async newSession(options?: { setup?: (sessionManager: any) => Promise<void> | void }) {
-    const nextFile = join(dirname(this.sessionFile), `rotated-${Date.now()}.jsonl`);
+  async newSession(options?: {
+    setup?: (sessionManager: any) => Promise<void> | void;
+  }) {
+    const nextFile = join(
+      dirname(this.sessionFile),
+      `rotated-${Date.now()}.jsonl`,
+    );
     const recorded: Array<any[]> = [];
     if (options?.setup) {
       await options.setup({
-        appendSessionInfo: (name: string) => recorded.push(["session_info", name]),
-        appendModelChange: (provider: string, modelId: string) => recorded.push(["model_change", provider, modelId]),
-        appendCompaction: (summary: string, firstKeptEntryId: string, tokensBefore: number) => recorded.push(["compaction", summary, firstKeptEntryId, tokensBefore]),
-        appendCustomMessageEntry: (customType: string, content: unknown, display: boolean, details: unknown) => recorded.push(["custom_message", customType, content, display, details]),
-        appendMessage: (message: unknown) => recorded.push(["message", message]),
+        appendSessionInfo: (name: string) =>
+          recorded.push(["session_info", name]),
+        appendModelChange: (provider: string, modelId: string) =>
+          recorded.push(["model_change", provider, modelId]),
+        appendCompaction: (
+          summary: string,
+          firstKeptEntryId: string,
+          tokensBefore: number,
+        ) =>
+          recorded.push([
+            "compaction",
+            summary,
+            firstKeptEntryId,
+            tokensBefore,
+          ]),
+        appendCustomMessageEntry: (
+          customType: string,
+          content: unknown,
+          display: boolean,
+          details: unknown,
+        ) =>
+          recorded.push([
+            "custom_message",
+            customType,
+            content,
+            display,
+            details,
+          ]),
+        appendMessage: (message: unknown) =>
+          recorded.push(["message", message]),
       });
     }
     this.seededEntries.push(recorded);
@@ -283,13 +504,23 @@ export class TestAgentControlSession {
     getLeafId: () => "entry-1",
     getTree: () => [
       {
-        entry: { id: "entry-1", type: "message", message: { role: "user", content: [{ type: "text", text: "hello" }] } },
+        entry: {
+          id: "entry-1",
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "hello" }] },
+        },
         label: "milestone",
         children: [],
       },
     ],
     buildSessionContext: () => this.sessionContext,
-    getHeader: () => ({ type: "session", id: "rotated", version: 3, timestamp: new Date().toISOString(), cwd: this.rootDir }),
+    getHeader: () => ({
+      type: "session",
+      id: "rotated",
+      version: 3,
+      timestamp: new Date().toISOString(),
+      cwd: this.rootDir,
+    }),
     getEntries: () => [],
     appendLabelChange: (id: string, label: string) => {
       this.labelChanges.push({ id, label });
@@ -297,7 +528,11 @@ export class TestAgentControlSession {
   };
 
   async navigateTree() {
-    return { cancelled: false, aborted: false, editorText: "Navigation text" } as any;
+    return {
+      cancelled: false,
+      aborted: false,
+      editorText: "Navigation text",
+    } as any;
   }
 
   subscribe(fn: (event: any) => void) {
@@ -312,7 +547,10 @@ export class TestAgentControlSession {
     for (const listener of this.listeners) {
       listener({
         type: "message_end",
-        message: { role: "assistant", content: [{ type: "text", text: "queued reply" }] },
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "queued reply" }],
+        },
       });
     }
   }

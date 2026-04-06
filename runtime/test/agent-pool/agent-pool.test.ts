@@ -8,37 +8,107 @@
 import { expect, test, afterEach } from "bun:test";
 import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { getAttachmentRegistry } from "../../src/agent-pool/attachments.js";
-import { createTempWorkspace, getTestWorkspace, importFresh, setEnv } from "../helpers.js";
+import {
+  createTempWorkspace,
+  getTestWorkspace,
+  importFresh,
+  setEnv,
+} from "../helpers.js";
 
 let restoreEnv: (() => void) | null = null;
 
-function createRuntime(session: any, overrides: Partial<AgentSessionRuntime> = {}): AgentSessionRuntime {
+function createRuntime(
+  session: any,
+  overrides: Partial<AgentSession> = {},
+): AgentSession {
   return {
-    session,
-    cwd: "/workspace",
-    diagnostics: [],
-    services: {} as any,
-    modelFallbackMessage: undefined,
+    ...session,
+    subscribe: (listener: (event: any) => void) => {
+      if (typeof session.subscribe === "function") {
+        return session.subscribe(listener);
+      }
+      session.listeners = session.listeners || [];
+      session.listeners.push(listener);
+      return () => {
+        session.listeners = session.listeners.filter(
+          (l: any) => l !== listener,
+        );
+      };
+    },
+    prompt: async (prompt: string, options?: any) => {
+      if (typeof session.prompt === "function") {
+        return session.prompt(prompt, options);
+      }
+      if (session.listeners) {
+        for (const listener of session.listeners) {
+          listener({
+            type: "message_end",
+            message: { role: "assistant", content: [] },
+          });
+        }
+      }
+      return { result: "ok" };
+    },
+    abort: async () => {
+      if (typeof session.abort === "function") {
+        return session.abort();
+      }
+    },
+    setModel: (model: any) => {
+      if (typeof session.setModel === "function") {
+        session.setModel(model);
+      }
+      session.model = model;
+    },
+    setThinkingLevel: (level: any) => {
+      if (typeof session.setThinkingLevel === "function") {
+        session.setThinkingLevel(level);
+      }
+      session.thinkingLevel = level;
+    },
+    setSessionName: (name: string) => {
+      if (typeof session.setSessionName === "function") {
+        session.setSessionName(name);
+      }
+      session.sessionName = name;
+    },
+    setActiveToolsByName: (toolNames: string[]) => {
+      if (typeof session.setActiveToolsByName === "function") {
+        session.setActiveToolsByName(toolNames);
+      }
+      session.activeTools = toolNames;
+    },
+    getActiveToolNames: () => {
+      if (typeof session.getActiveToolNames === "function") {
+        return session.getActiveToolNames();
+      }
+      return session.activeTools || [];
+    },
     newSession: async (options?: any) => ({
-      cancelled: typeof session.newSession === "function" ? !(await session.newSession(options)) : false,
+      cancelled:
+        typeof session.newSession === "function"
+          ? !(await session.newSession(options))
+          : false,
     }),
     switchSession: async (path: string) => ({
-      cancelled: typeof session.switchSession === "function" ? !(await session.switchSession(path)) : false,
+      cancelled:
+        typeof session.switchSession === "function"
+          ? !(await session.switchSession(path))
+          : false,
     }),
-    fork: async (entryId: string) => (
+    fork: async (entryId: string) =>
       typeof session.fork === "function"
         ? await session.fork(entryId)
-        : { cancelled: false }
-    ),
+        : { cancelled: false },
     importFromJsonl: async () => ({ cancelled: false }),
     dispose: async () => {
       session.dispose?.();
     },
     ...overrides,
-  } as any;
+  };
 }
 
 afterEach(async () => {
@@ -55,9 +125,15 @@ afterEach(async () => {
 
 test("agent pool aggregates streamed text and writes logs", async () => {
   const ws = getTestWorkspace();
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   class StubSession {
     private listeners: Array<(event: any) => void> = [];
@@ -91,8 +167,12 @@ test("agent pool aggregates streamed text and writes logs", async () => {
   expect(result.result).toBe("Hello world");
   expect(process.env.PICLAW_CHAT_JID).toBeUndefined();
 
-  const logsDir = (pool as any).logsDir || join(process.env.PICLAW_WORKSPACE || ws.workspace, "logs");
-  const logFiles = readdirSync(logsDir).filter((f) => f.startsWith("agent-") && f.endsWith(".log"));
+  const logsDir =
+    (pool as any).logsDir ||
+    join(process.env.PICLAW_WORKSPACE || ws.workspace, "logs");
+  const logFiles = readdirSync(logsDir).filter(
+    (f) => f.startsWith("agent-") && f.endsWith(".log"),
+  );
   expect(logFiles.length).toBeGreaterThan(0);
   const latest = logFiles.sort().slice(-1)[0];
   const content = readFileSync(join(logsDir, latest), "utf8");
@@ -101,9 +181,15 @@ test("agent pool aggregates streamed text and writes logs", async () => {
 
 test("agent pool honors timeout overrides", async () => {
   const ws = getTestWorkspace();
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   let abortCalled = false;
   class StubSession {
@@ -139,9 +225,15 @@ test("agent pool honors timeout overrides", async () => {
 
 test("agent pool clears attachments when a run errors", async () => {
   const ws = getTestWorkspace();
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
   const attachments = getAttachmentRegistry();
   attachments.clear("web:default");
 
@@ -176,11 +268,18 @@ test("agent pool clears attachments when a run errors", async () => {
 
 test("agent pool stores SSH config for future sessions when no live SSH session exists", async () => {
   const ws = getTestWorkspace();
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
-  const { initDatabase, getSshConfig } = await importFresh<typeof import("../src/db.js")>("../src/db.js");
+  const { initDatabase, getSshConfig } =
+    await importFresh<typeof import("../src/db.js")>("../src/db.js");
   initDatabase();
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   let pool: any;
   let createCalls = 0;
@@ -204,7 +303,9 @@ test("agent pool stores SSH config for future sessions when no live SSH session 
           strict_host_key_checking: "yes",
         });
         expect(result.apply_timing).toBe("next_session");
-        expect(getSshConfig("web:other")?.ssh_target).toBe("agent@example.com:/srv/project");
+        expect(getSshConfig("web:other")?.ssh_target).toBe(
+          "agent@example.com:/srv/project",
+        );
       } finally {
         this.isStreaming = false;
       }
@@ -235,9 +336,15 @@ test("agent pool stores SSH config for future sessions when no live SSH session 
 
 test("agent pool evicts idle sessions and recreates them", async () => {
   const ws = getTestWorkspace();
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   let createCalls = 0;
   let disposed = 0;
@@ -278,9 +385,15 @@ test("agent pool evicts idle sessions and recreates them", async () => {
 
 test("agent pool can run a side prompt with the current model and thinking level", async () => {
   const ws = getTestWorkspace();
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   const seen: Array<{ model: string; reasoning: unknown; prompt: string }> = [];
   class StubSession {
@@ -329,7 +442,20 @@ test("agent pool can run a side prompt with the current model and thinking level
             api: "openai-responses",
             provider: "openai",
             model: "gpt-test",
-            usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+            usage: {
+              input: 10,
+              output: 5,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 15,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
+            },
             stopReason: "stop",
             timestamp: Date.now(),
           },
@@ -343,14 +469,22 @@ test("agent pool can run a side prompt with the current model and thinking level
   expect(result.result).toBe("answer");
   expect(result.thinking).toBe("plan");
   expect(result.model).toBe("openai/gpt-test");
-  expect(seen).toEqual([{ model: "openai/gpt-test", reasoning: "high", prompt: "Side question" }]);
+  expect(seen).toEqual([
+    { model: "openai/gpt-test", reasoning: "high", prompt: "Side question" },
+  ]);
 });
 
 test("agent pool forwards header-based auth for side prompts", async () => {
   const ws = getTestWorkspace();
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   const seen: Array<{ apiKey: unknown; headers: unknown }> = [];
   class StubSession {
@@ -396,7 +530,20 @@ test("agent pool forwards header-based auth for side prompts", async () => {
             api: "openai-responses",
             provider: "openai",
             model: "gpt-test",
-            usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+            usage: {
+              input: 1,
+              output: 1,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 2,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
+            },
             stopReason: "stop",
             timestamp: Date.now(),
           },
@@ -408,33 +555,45 @@ test("agent pool forwards header-based auth for side prompts", async () => {
   const result = await pool.runSidePrompt("web:default", "Side question");
   expect(result.status).toBe("success");
   expect(result.result).toBe("header answer");
-  expect(seen).toEqual([{ apiKey: undefined, headers: { Authorization: "Bearer side-token", "X-Test": "1" } }]);
+  expect(seen).toEqual([
+    {
+      apiKey: undefined,
+      headers: { Authorization: "Bearer side-token", "X-Test": "1" },
+    },
+  ]);
 });
 
 test("agent pool forks active chats from the previous stable turn boundary", async () => {
   const ws = createTempWorkspace("piclaw-active-fork-");
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
   const db = await importFresh<typeof import("../src/db.js")>("../src/db.js");
   db.initDatabase();
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
-  const createAssistantMessage = (text: string) => ({
-    role: "assistant",
-    content: [{ type: "text", text }],
-    provider: "openai",
-    model: "gpt-test",
-    usage: {
-      input: 1,
-      output: 1,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 2,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: "stop",
-    timestamp: Date.now(),
-  } as const);
+  const createAssistantMessage = (text: string) =>
+    ({
+      role: "assistant",
+      content: [{ type: "text", text }],
+      provider: "openai",
+      model: "gpt-test",
+      usage: {
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 2,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    }) as const;
 
   class ForkableSession {
     private listeners: Array<(event: any) => void> = [];
@@ -451,11 +610,21 @@ test("agent pool forks active chats from the previous stable turn boundary", asy
     sessionId: string;
     gate: Promise<void> | null = null;
 
-    constructor(private workspace: string, private sessionDir: string, seed = false) {
+    constructor(
+      private workspace: string,
+      private sessionDir: string,
+      seed = false,
+    ) {
       this.sessionManager = SessionManager.create(workspace, sessionDir);
       if (seed) {
-        this.sessionManager.appendMessage({ role: "user", content: "stable user", timestamp: Date.now() } as const);
-        this.sessionManager.appendMessage(createAssistantMessage("stable assistant"));
+        this.sessionManager.appendMessage({
+          role: "user",
+          content: "stable user",
+          timestamp: Date.now(),
+        } as const);
+        this.sessionManager.appendMessage(
+          createAssistantMessage("stable assistant"),
+        );
       }
       this.sessionFile = this.sessionManager.getSessionFile();
       this.sessionId = this.sessionManager.getSessionId();
@@ -468,7 +637,10 @@ test("agent pool forks active chats from the previous stable turn boundary", asy
       };
     }
 
-    async newSession(options?: { parentSession?: string; setup?: (sessionManager: SessionManager) => Promise<void> | void }) {
+    async newSession(options?: {
+      parentSession?: string;
+      setup?: (sessionManager: SessionManager) => Promise<void> | void;
+    }) {
       const manager = SessionManager.create(this.workspace, this.sessionDir);
       manager.newSession({ parentSession: options?.parentSession });
       if (options?.setup) {
@@ -482,30 +654,47 @@ test("agent pool forks active chats from the previous stable turn boundary", asy
 
     async prompt(_prompt: string) {
       this.isStreaming = true;
-      this.sessionManager.appendMessage({ role: "user", content: "in-flight user", timestamp: Date.now() } as const);
+      this.sessionManager.appendMessage({
+        role: "user",
+        content: "in-flight user",
+        timestamp: Date.now(),
+      } as const);
       this.sessionFile = this.sessionManager.getSessionFile();
       if (this.gate) {
         await this.gate;
       }
       for (const listener of this.listeners) {
-        listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "done" } });
+        listener({
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", delta: "done" },
+        });
       }
       this.isStreaming = false;
     }
 
     async setModel(_model: any) {}
     setThinkingLevel(_level: any) {}
-    setSessionName(name: string) { this.sessionName = name; }
+    setSessionName(name: string) {
+      this.sessionName = name;
+    }
     async abort() {}
     dispose() {}
   }
 
   let release!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   const sourceChatJid = "web:default";
-  const sourceSession = new ForkableSession(ws.workspace, join(ws.workspace, "sessions-source"), true);
+  const sourceSession = new ForkableSession(
+    ws.workspace,
+    join(ws.workspace, "sessions-source"),
+    true,
+  );
   sourceSession.gate = gate;
-  const created: Record<string, ForkableSession> = { [sourceChatJid]: sourceSession };
+  const created: Record<string, ForkableSession> = {
+    [sourceChatJid]: sourceSession,
+  };
 
   const pool = new AgentPool({
     createSession: async (chatJid: string, sessionDir: string) => {
@@ -522,7 +711,8 @@ test("agent pool forks active chats from the previous stable turn boundary", asy
   const branch = await (pool as any).createForkedChatBranch(sourceChatJid);
   expect(branch.chat_jid).not.toBe(sourceChatJid);
   const forkedSession = created[branch.chat_jid];
-  const forkedMessages = forkedSession.sessionManager.buildSessionContext().messages;
+  const forkedMessages =
+    forkedSession.sessionManager.buildSessionContext().messages;
   const serialized = JSON.stringify(forkedMessages);
   expect(serialized).toContain("stable user");
   expect(serialized).toContain("stable assistant");
@@ -538,13 +728,21 @@ test("agent pool forks active chats from the previous stable turn boundary", asy
 
 test("agent pool refuses to prune an active branch session", async () => {
   const ws = createTempWorkspace("piclaw-active-prune-");
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
   const db = await importFresh<typeof import("../src/db.js")>("../src/db.js");
   db.initDatabase();
   db.storeChatMetadata("web:default", new Date().toISOString(), "Default");
   const root = db.getChatBranchByChatJid("web:default");
-  db.storeChatMetadata("web:default:branch:active", new Date().toISOString(), "Research");
+  db.storeChatMetadata(
+    "web:default:branch:active",
+    new Date().toISOString(),
+    "Research",
+  );
   db.ensureChatBranch({
     chat_jid: "web:default:branch:active",
     root_chat_jid: "web:default",
@@ -552,7 +750,9 @@ test("agent pool refuses to prune an active branch session", async () => {
     agent_name: "research",
   });
 
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   class ActiveBranchSession {
     sessionName = "Research";
@@ -561,7 +761,9 @@ test("agent pool refuses to prune an active branch session", async () => {
     isCompacting = false;
     isRetrying = false;
     isBashRunning = false;
-    subscribe(_listener: (event: any) => void) { return () => {}; }
+    subscribe(_listener: (event: any) => void) {
+      return () => {};
+    }
     async prompt(_prompt: string) {}
     async abort() {}
     dispose() {}
@@ -573,10 +775,12 @@ test("agent pool refuses to prune an active branch session", async () => {
 
   await (pool as any).getOrCreate("web:default:branch:active");
 
-  await expect((pool as any).pruneChatBranch("web:default:branch:active")).rejects.toThrow(
-    "Cannot prune a branch while it is active."
-  );
-  expect(db.getChatBranchByChatJid("web:default:branch:active")?.archived_at).toBeNull();
+  await expect(
+    (pool as any).pruneChatBranch("web:default:branch:active"),
+  ).rejects.toThrow("Cannot prune a branch while it is active.");
+  expect(
+    db.getChatBranchByChatJid("web:default:branch:active")?.archived_at,
+  ).toBeNull();
 
   await pool.shutdown();
   ws.cleanup();
@@ -584,9 +788,15 @@ test("agent pool refuses to prune an active branch session", async () => {
 
 test("agent pool reports side prompt errors when no model is active", async () => {
   const ws = getTestWorkspace();
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   class StubSession {
     model = null;
@@ -609,9 +819,15 @@ test("agent pool reports side prompt errors when no model is active", async () =
 
 test("agent pool can run a tool-capable side prompt through a separate side session", async () => {
   const ws = getTestWorkspace();
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   const mainModel = {
     provider: "openai",
@@ -629,19 +845,35 @@ test("agent pool can run a tool-capable side prompt through a separate side sess
     thinkingLevel = "high";
     sessionManager = {
       buildSessionContext: () => ({
-        messages: [{ role: "user", content: [{ type: "text", text: "main context" }], timestamp: Date.now() }],
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "main context" }],
+            timestamp: Date.now(),
+          },
+        ],
         thinkingLevel: "high",
         model: { provider: "openai", modelId: "gpt-test" },
       }),
     };
-    getActiveToolNames() { return ["read", "bash"]; }
-    subscribe(_listener: (event: any) => void) { return () => {}; }
+    getActiveToolNames() {
+      return ["read", "bash"];
+    }
+    subscribe(_listener: (event: any) => void) {
+      return () => {};
+    }
     async prompt(_prompt: string) {}
     async abort() {}
     dispose() {}
   }
 
-  const seen: any = { model: null, thinking: null, tools: null, prompt: null, seeded: false };
+  const seen: any = {
+    model: null,
+    thinking: null,
+    tools: null,
+    prompt: null,
+    seeded: false,
+  };
   class SideSession {
     model = undefined;
     isStreaming = false;
@@ -668,20 +900,46 @@ test("agent pool can run a tool-capable side prompt through a separate side sess
       }
       return true;
     }
-    async setModel(model: any) { this.model = model; seen.model = `${model.provider}/${model.id}`; }
-    setThinkingLevel(level: any) { seen.thinking = level; }
-    setActiveToolsByName(toolNames: string[]) { seen.tools = [...toolNames]; }
+    async setModel(model: any) {
+      this.model = model;
+      seen.model = `${model.provider}/${model.id}`;
+    }
+    setThinkingLevel(level: any) {
+      seen.thinking = level;
+    }
+    setActiveToolsByName(toolNames: string[]) {
+      seen.tools = [...toolNames];
+    }
     async prompt(prompt: string) {
       seen.prompt = prompt;
       for (const listener of this.listeners) {
-        listener({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "tool plan" } });
-        listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "tool answer" } });
+        listener({
+          type: "message_update",
+          assistantMessageEvent: { type: "thinking_delta", delta: "tool plan" },
+        });
+        listener({
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", delta: "tool answer" },
+        });
         listener({
           type: "message_end",
           message: {
             role: "assistant",
             content: [{ type: "text", text: "tool answer" }],
-            usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+            usage: {
+              input: 10,
+              output: 5,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 15,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                total: 0,
+              },
+            },
             stopReason: "stop",
             timestamp: Date.now(),
           },
@@ -689,7 +947,9 @@ test("agent pool can run a tool-capable side prompt through a separate side sess
       }
     }
     async abort() {}
-    getLastAssistantText() { return "tool answer"; }
+    getLastAssistantText() {
+      return "tool answer";
+    }
     dispose() {}
   }
 
@@ -704,7 +964,9 @@ test("agent pool can run a tool-capable side prompt through a separate side sess
     } as any,
   });
 
-  const result = await pool.runSidePrompt("web:default", "Inspect workspace", { systemPrompt: "Use tools if needed." });
+  const result = await pool.runSidePrompt("web:default", "Inspect workspace", {
+    systemPrompt: "Use tools if needed.",
+  });
   expect(result.status).toBe("success");
   expect(result.result).toBe("tool answer");
   expect(result.thinking).toBe("tool plan");

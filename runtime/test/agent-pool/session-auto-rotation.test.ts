@@ -6,9 +6,14 @@
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, truncateSync } from "fs";
 import { basename, join } from "path";
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
-import { createTempWorkspace, importFresh, setEnv, type TempWorkspace } from "../helpers.js";
+import {
+  createTempWorkspace,
+  importFresh,
+  setEnv,
+  type TempWorkspace,
+} from "../helpers.js";
 
 let restoreEnv: (() => void) | null = null;
 let tempWorkspace: TempWorkspace | null = null;
@@ -20,23 +25,8 @@ afterEach(() => {
   tempWorkspace = null;
 });
 
-function createRuntime(session: any): AgentSessionRuntime {
-  return {
-    session,
-    cwd: "/workspace",
-    diagnostics: [],
-    services: {} as any,
-    modelFallbackMessage: undefined,
-    newSession: async (options?: { parentSession?: string; setup?: (sessionManager: SessionManager) => Promise<void> | void }) => ({
-      cancelled: !(await session.newSession(options)),
-    }),
-    switchSession: async () => ({ cancelled: false }),
-    fork: async () => ({ cancelled: false }),
-    importFromJsonl: async () => ({ cancelled: false }),
-    dispose: async () => {
-      session.dispose?.();
-    },
-  } as any;
+function createRuntime(session: any): AgentSession {
+  return session as any;
 }
 
 function createAssistantMessage(text: string) {
@@ -82,8 +72,14 @@ class AutoRotateSession {
     this.workspace = workspace;
     this.sessionDir = sessionDir;
     this.sessionManager = SessionManager.create(workspace, sessionDir);
-    this.sessionManager.appendMessage({ role: "user", content: "Remember this before rotation", timestamp: Date.now() } as const);
-    this.sessionManager.appendMessage(createAssistantMessage("Assistant context before auto-rotate"));
+    this.sessionManager.appendMessage({
+      role: "user",
+      content: "Remember this before rotation",
+      timestamp: Date.now(),
+    } as const);
+    this.sessionManager.appendMessage(
+      createAssistantMessage("Assistant context before auto-rotate"),
+    );
     this.sessionFile = this.sessionManager.getSessionFile();
   }
 
@@ -97,7 +93,11 @@ class AutoRotateSession {
   async compact() {
     this.compactCalls += 1;
     const firstKeptEntryId = this.sessionManager.getEntries()[0]?.id ?? "root";
-    this.sessionManager.appendCompaction("Automatic rotation summary", firstKeptEntryId, 2048);
+    this.sessionManager.appendCompaction(
+      "Automatic rotation summary",
+      firstKeptEntryId,
+      2048,
+    );
     this.sessionFile = this.sessionManager.getSessionFile();
     return {
       summary: "Automatic rotation summary",
@@ -106,7 +106,10 @@ class AutoRotateSession {
     };
   }
 
-  async newSession(options?: { parentSession?: string; setup?: (sessionManager: SessionManager) => Promise<void> | void }) {
+  async newSession(options?: {
+    parentSession?: string;
+    setup?: (sessionManager: SessionManager) => Promise<void> | void;
+  }) {
     const manager = SessionManager.create(this.workspace, this.sessionDir);
     manager.newSession({ parentSession: options?.parentSession });
     if (options?.setup) {
@@ -140,8 +143,12 @@ test("agent pool auto-rotates oversized persisted sessions before prompting", as
     PICLAW_SESSION_MAX_SIZE_MB: "1",
   });
 
-  const { ensureSessionDir } = await importFresh<typeof import("../src/agent-pool/session.js")>("../src/agent-pool/session.js");
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { ensureSessionDir } = await importFresh<
+    typeof import("../src/agent-pool/session.js")
+  >("../src/agent-pool/session.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   const sessionDir = ensureSessionDir("web:default");
   const session = new AutoRotateSession(tempWorkspace.workspace, sessionDir);
@@ -164,10 +171,17 @@ test("agent pool auto-rotates oversized persisted sessions before prompting", as
   expect(rotatedSessionFile && existsSync(rotatedSessionFile)).toBe(true);
   expect(previousSessionFile && existsSync(previousSessionFile)).toBe(false);
 
-  const archivePath = join(sessionDir, "archive", basename(previousSessionFile!));
+  const archivePath = join(
+    sessionDir,
+    "archive",
+    basename(previousSessionFile!),
+  );
   expect(existsSync(archivePath)).toBe(true);
 
-  const resumed = SessionManager.continueRecent(tempWorkspace.workspace, sessionDir);
+  const resumed = SessionManager.continueRecent(
+    tempWorkspace.workspace,
+    sessionDir,
+  );
   expect(resumed.getSessionFile()).toBe(rotatedSessionFile);
   expect(resumed.getHeader()?.parentSession).toBe(archivePath);
 

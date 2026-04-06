@@ -9,7 +9,10 @@
  * Consumers: channels/web.ts sets up the UI bridge during agent runs.
  */
 
-import type { AgentSessionRuntime, ExtensionUIContext } from "@mariozechner/pi-coding-agent";
+import type {
+  AgentSession,
+  ExtensionUIContext,
+} from "@mariozechner/pi-coding-agent";
 
 import { createLogger } from "../../../utils/logger.js";
 import { createFallbackTheme } from "./theme.js";
@@ -43,9 +46,19 @@ function normalizeThemePayload(input: unknown): WebThemePayload | null {
   }
   if (typeof input === "object") {
     const obj = input as { theme?: unknown; name?: unknown; tint?: unknown };
-    const name = typeof obj.theme === "string" ? obj.theme : typeof obj.name === "string" ? obj.name : "";
+    const name =
+      typeof obj.theme === "string"
+        ? obj.theme
+        : typeof obj.name === "string"
+          ? obj.name
+          : "";
     if (!name) return null;
-    const tint = typeof obj.tint === "string" ? obj.tint : obj.tint === null ? null : undefined;
+    const tint =
+      typeof obj.tint === "string"
+        ? obj.tint
+        : obj.tint === null
+          ? null
+          : undefined;
     return { theme: name, tint };
   }
   return null;
@@ -74,10 +87,10 @@ export class UiBridge {
 
   constructor(private channel: UiBridgeChannel) {}
 
-  async bindSession(runtime: AgentSessionRuntime, chatJid: string): Promise<void> {
+  async bindSession(runtime: AgentSession, chatJid: string): Promise<void> {
     if (!chatJid.startsWith("web:")) return;
 
-    const session = runtime.session;
+    const session = runtime;
 
     const waitForIdle = async (): Promise<void> => {
       if (!session.isStreaming) return;
@@ -96,13 +109,17 @@ export class UiBridge {
       uiContext,
       commandContextActions: {
         waitForIdle,
-        newSession: async (options) => runtime.newSession(options),
+        newSession: async (options) => ({
+          cancelled: !(await runtime.newSession(options)),
+        }),
         fork: async (entryId) => runtime.fork(entryId),
         navigateTree: async (targetId, options) => {
           const result = await session.navigateTree(targetId, options);
           return { cancelled: result.cancelled };
         },
-        switchSession: async (sessionPath) => runtime.switchSession(sessionPath),
+        switchSession: async (sessionPath) => ({
+          cancelled: !(await runtime.switchSession(sessionPath)),
+        }),
         reload: () => session.reload(),
       },
       onError: (error) => {
@@ -122,17 +139,27 @@ export class UiBridge {
     const requestUiResponse = async (
       kind: string,
       payload: Record<string, unknown>,
-      timeoutMs = 120000
+      timeoutMs = 120000,
     ): Promise<unknown> => {
       const requestId = `ui-${Date.now()}-${++this.uiRequestCounter}`;
       return new Promise((resolve, reject) => {
         const timeoutId = setTimeout(() => {
           this.pendingUiRequests.delete(requestId);
-          this.channel.broadcastEvent("extension_ui_timeout", { request_id: requestId, kind, chat_jid: chatJid });
+          this.channel.broadcastEvent("extension_ui_timeout", {
+            request_id: requestId,
+            kind,
+            chat_jid: chatJid,
+          });
           resolve(undefined);
         }, timeoutMs);
 
-        this.pendingUiRequests.set(requestId, { resolve, reject, timeoutId, kind, chatJid });
+        this.pendingUiRequests.set(requestId, {
+          resolve,
+          reject,
+          timeoutId,
+          kind,
+          chatJid,
+        });
         this.channel.broadcastEvent("extension_ui_request", {
           request_id: requestId,
           kind,
@@ -146,53 +173,95 @@ export class UiBridge {
 
     return {
       select: async (title, options, opts) => {
-        const timeoutMs = typeof opts?.timeout === "number" ? opts.timeout : 120000;
-        const result = await requestUiResponse("select", { title, options, opts }, timeoutMs);
+        const timeoutMs =
+          typeof opts?.timeout === "number" ? opts.timeout : 120000;
+        const result = await requestUiResponse(
+          "select",
+          { title, options, opts },
+          timeoutMs,
+        );
         return typeof result === "string" ? result : undefined;
       },
       confirm: async (title, message, opts) => {
-        const timeoutMs = typeof opts?.timeout === "number" ? opts.timeout : 120000;
-        const result = await requestUiResponse("confirm", { title, message, opts }, timeoutMs);
+        const timeoutMs =
+          typeof opts?.timeout === "number" ? opts.timeout : 120000;
+        const result = await requestUiResponse(
+          "confirm",
+          { title, message, opts },
+          timeoutMs,
+        );
         return Boolean(result);
       },
       input: async (title, placeholder, opts) => {
-        const timeoutMs = typeof opts?.timeout === "number" ? opts.timeout : 120000;
-        const result = await requestUiResponse("input", { title, placeholder, opts }, timeoutMs);
+        const timeoutMs =
+          typeof opts?.timeout === "number" ? opts.timeout : 120000;
+        const result = await requestUiResponse(
+          "input",
+          { title, placeholder, opts },
+          timeoutMs,
+        );
         return typeof result === "string" ? result : undefined;
       },
       notify: (message, type) => {
-        this.channel.broadcastEvent("extension_ui_notify", { chat_jid: chatJid, message, type });
+        this.channel.broadcastEvent("extension_ui_notify", {
+          chat_jid: chatJid,
+          message,
+          type,
+        });
       },
       onTerminalInput: () => () => {},
       setStatus: (key, text) => {
-        this.channel.broadcastEvent("extension_ui_status", { chat_jid: chatJid, key, text });
+        this.channel.broadcastEvent("extension_ui_status", {
+          chat_jid: chatJid,
+          key,
+          text,
+        });
       },
       setWorkingMessage: (message) => {
-        this.channel.broadcastEvent("extension_ui_working", { chat_jid: chatJid, message });
+        this.channel.broadcastEvent("extension_ui_working", {
+          chat_jid: chatJid,
+          message,
+        });
       },
       setWidget: (key, content, options) => {
         if (Array.isArray(content)) {
-          this.channel.broadcastEvent("extension_ui_widget", { chat_jid: chatJid, key, content, options });
+          this.channel.broadcastEvent("extension_ui_widget", {
+            chat_jid: chatJid,
+            key,
+            content,
+            options,
+          });
         }
       },
       setFooter: () => {},
       setHeader: () => {},
       setTitle: (title) => {
-        this.channel.broadcastEvent("extension_ui_title", { chat_jid: chatJid, title });
+        this.channel.broadcastEvent("extension_ui_title", {
+          chat_jid: chatJid,
+          title,
+        });
       },
       custom: async <T>(_factory: unknown, _options?: unknown) => {
-        const result = await requestUiResponse("custom", { title: "Custom UI" });
+        const result = await requestUiResponse("custom", {
+          title: "Custom UI",
+        });
         return result as T;
       },
       pasteToEditor: (text) => {
         const current = this.editorTextByChat.get(chatJid) || "";
         const updated = current + text;
         this.editorTextByChat.set(chatJid, updated);
-        this.channel.broadcastEvent("extension_ui_editor_text", { chat_jid: chatJid, text: updated });
+        this.channel.broadcastEvent("extension_ui_editor_text", {
+          chat_jid: chatJid,
+          text: updated,
+        });
       },
       setEditorText: (text) => {
         this.editorTextByChat.set(chatJid, text);
-        this.channel.broadcastEvent("extension_ui_editor_text", { chat_jid: chatJid, text });
+        this.channel.broadcastEvent("extension_ui_editor_text", {
+          chat_jid: chatJid,
+          text,
+        });
       },
       getEditorText: () => this.editorTextByChat.get(chatJid) || "",
       editor: async (title, prefill) => {
@@ -203,18 +272,27 @@ export class UiBridge {
       get theme() {
         return fallbackTheme;
       },
-      getAllThemes: () => WEB_THEME_NAMES.map((name) => ({ name, path: undefined })),
+      getAllThemes: () =>
+        WEB_THEME_NAMES.map((name) => ({ name, path: undefined })),
       getTheme: (name) => {
         if (typeof name !== "string") return undefined;
         const normalized = name.trim().toLowerCase();
-        if (!WEB_THEME_NAMES.includes(normalized as (typeof WEB_THEME_NAMES)[number])) return undefined;
+        if (
+          !WEB_THEME_NAMES.includes(
+            normalized as (typeof WEB_THEME_NAMES)[number],
+          )
+        )
+          return undefined;
         return undefined;
       },
       setTheme: (nextTheme) => {
         const payload = normalizeThemePayload(nextTheme);
         if (!payload) return { success: false, error: "Invalid theme payload" };
         this.themeByChat.set(chatJid, payload);
-        this.channel.broadcastEvent("ui_theme", { chat_jid: chatJid, ...payload });
+        this.channel.broadcastEvent("ui_theme", {
+          chat_jid: chatJid,
+          ...payload,
+        });
         return { success: true };
       },
       getToolsExpanded: () => false,
@@ -223,10 +301,15 @@ export class UiBridge {
     };
   }
 
-  handleUiResponse(requestId: string, outcome: unknown, chatJid?: string | null): { status: "ok" | "unknown_request" } {
+  handleUiResponse(
+    requestId: string,
+    outcome: unknown,
+    chatJid?: string | null,
+  ): { status: "ok" | "unknown_request" } {
     const pending = this.pendingUiRequests.get(requestId);
     if (!pending) return { status: "unknown_request" };
-    const normalizedChatJid = typeof chatJid === "string" && chatJid.trim() ? chatJid.trim() : null;
+    const normalizedChatJid =
+      typeof chatJid === "string" && chatJid.trim() ? chatJid.trim() : null;
     if (normalizedChatJid && pending.chatJid !== normalizedChatJid) {
       return { status: "unknown_request" };
     }

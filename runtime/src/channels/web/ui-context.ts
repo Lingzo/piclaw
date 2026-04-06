@@ -7,7 +7,7 @@
  * Consumers: channels/web.ts creates a UIContext for each agent session.
  */
 
-import type { AgentSessionRuntime, ExtensionUIContext } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, ExtensionUIContext } from "@mariozechner/pi-coding-agent";
 
 import type { WebChannelLike } from "./core/web-channel-contracts.js";
 import { UiBridge, type UiBridgeChannel } from "./theming/ui-bridge.js";
@@ -22,7 +22,7 @@ function getBridge(channel: UiContextChannel): UiBridge {
 /** Attach a UiBridge to an agent session for extension UI interactions. */
 export async function bindSessionUiContext(
   channel: WebChannelLike | UiContextChannel,
-  runtime: AgentSessionRuntime,
+  runtime: AgentSession,
   chatJid: string
 ): Promise<void> {
   return getBridge(channel).bindSession(runtime, chatJid);

@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "path";
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { createTempWorkspace, importFresh, setEnv } from "../helpers.js";
 
@@ -11,23 +11,8 @@ afterEach(() => {
   restoreEnv = null;
 });
 
-function createRuntime(session: any): AgentSessionRuntime {
-  return {
-    session,
-    cwd: "/workspace",
-    diagnostics: [],
-    services: {} as any,
-    modelFallbackMessage: undefined,
-    newSession: async (options?: { parentSession?: string; setup?: (sessionManager: SessionManager) => Promise<void> | void }) => ({
-      cancelled: !(await session.newSession(options)),
-    }),
-    switchSession: async () => ({ cancelled: false }),
-    fork: async () => ({ cancelled: false }),
-    importFromJsonl: async () => ({ cancelled: false }),
-    dispose: async () => {
-      session.dispose?.();
-    },
-  } as any;
+function createRuntime(session: any): AgentSession {
+  return session as any;
 }
 
 function createAssistantMessage(text: string) {
@@ -51,11 +36,17 @@ function createAssistantMessage(text: string) {
 
 test("agent pool audit: forks active chats from the previous stable turn boundary", async () => {
   const ws = createTempWorkspace("piclaw-active-fork-audit-");
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
   const db = await importFresh<typeof import("../src/db.js")>("../src/db.js");
   db.initDatabase();
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   class ForkableSession {
     sessionManager: SessionManager;
@@ -70,11 +61,21 @@ test("agent pool audit: forks active chats from the previous stable turn boundar
     pendingMessageCount = 0;
     sessionId: string;
 
-    constructor(private workspace: string, private sessionDir: string, seed = false) {
+    constructor(
+      private workspace: string,
+      private sessionDir: string,
+      seed = false,
+    ) {
       this.sessionManager = SessionManager.create(workspace, sessionDir);
       if (seed) {
-        this.sessionManager.appendMessage({ role: "user", content: "stable user", timestamp: Date.now() } as const);
-        this.sessionManager.appendMessage(createAssistantMessage("stable assistant"));
+        this.sessionManager.appendMessage({
+          role: "user",
+          content: "stable user",
+          timestamp: Date.now(),
+        } as const);
+        this.sessionManager.appendMessage(
+          createAssistantMessage("stable assistant"),
+        );
       }
       this.sessionFile = this.sessionManager.getSessionFile();
       this.sessionId = this.sessionManager.getSessionId();
@@ -84,7 +85,10 @@ test("agent pool audit: forks active chats from the previous stable turn boundar
       return () => {};
     }
 
-    async newSession(options?: { parentSession?: string; setup?: (sessionManager: SessionManager) => Promise<void> | void }) {
+    async newSession(options?: {
+      parentSession?: string;
+      setup?: (sessionManager: SessionManager) => Promise<void> | void;
+    }) {
       const manager = SessionManager.create(this.workspace, this.sessionDir);
       manager.newSession({ parentSession: options?.parentSession });
       if (options?.setup) {
@@ -98,17 +102,25 @@ test("agent pool audit: forks active chats from the previous stable turn boundar
 
     async setModel(_model: any) {}
     setThinkingLevel(_level: any) {}
-    setSessionName(name: string) { this.sessionName = name; }
+    setSessionName(name: string) {
+      this.sessionName = name;
+    }
     async prompt(_prompt: string) {}
     async abort() {}
     dispose() {}
   }
 
   const sourceChatJid = "web:default";
-  const sourceSession = new ForkableSession(ws.workspace, join(ws.workspace, "sessions-source"), true);
+  const sourceSession = new ForkableSession(
+    ws.workspace,
+    join(ws.workspace, "sessions-source"),
+    true,
+  );
   sourceSession.isStreaming = true;
   const stableLeafId = sourceSession.sessionManager.getLeafId();
-  const created: Record<string, ForkableSession> = { [sourceChatJid]: sourceSession };
+  const created: Record<string, ForkableSession> = {
+    [sourceChatJid]: sourceSession,
+  };
 
   const pool = new AgentPool({
     createSession: async (chatJid: string, sessionDir: string) => {
@@ -119,12 +131,16 @@ test("agent pool audit: forks active chats from the previous stable turn boundar
     },
   });
 
-  (pool as any).activeForkBaseLeafByChat.set(sourceChatJid, stableLeafId ?? null);
+  (pool as any).activeForkBaseLeafByChat.set(
+    sourceChatJid,
+    stableLeafId ?? null,
+  );
 
   const branch = await (pool as any).createForkedChatBranch(sourceChatJid);
   expect(branch.chat_jid).not.toBe(sourceChatJid);
   const forkedSession = created[branch.chat_jid];
-  const forkedMessages = forkedSession.sessionManager.buildSessionContext().messages;
+  const forkedMessages =
+    forkedSession.sessionManager.buildSessionContext().messages;
   const serialized = JSON.stringify(forkedMessages);
   expect(serialized).toContain("stable user");
   expect(serialized).toContain("stable assistant");
@@ -136,13 +152,21 @@ test("agent pool audit: forks active chats from the previous stable turn boundar
 
 test("agent pool audit: refuses to prune an active branch session", async () => {
   const ws = createTempWorkspace("piclaw-active-prune-audit-");
-  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+  });
 
   const db = await importFresh<typeof import("../src/db.js")>("../src/db.js");
   db.initDatabase();
   db.storeChatMetadata("web:default", new Date().toISOString(), "Default");
   const root = db.getChatBranchByChatJid("web:default");
-  db.storeChatMetadata("web:default:branch:active", new Date().toISOString(), "Research");
+  db.storeChatMetadata(
+    "web:default:branch:active",
+    new Date().toISOString(),
+    "Research",
+  );
   db.ensureChatBranch({
     chat_jid: "web:default:branch:active",
     root_chat_jid: "web:default",
@@ -150,7 +174,9 @@ test("agent pool audit: refuses to prune an active branch session", async () => 
     agent_name: "research",
   });
 
-  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+  const { AgentPool } = await importFresh<
+    typeof import("../src/agent-pool.js")
+  >("../src/agent-pool.js");
 
   class ActiveBranchSession {
     sessionName = "Research";
@@ -159,7 +185,9 @@ test("agent pool audit: refuses to prune an active branch session", async () => 
     isCompacting = false;
     isRetrying = false;
     isBashRunning = false;
-    subscribe(_listener: (event: any) => void) { return () => {}; }
+    subscribe(_listener: (event: any) => void) {
+      return () => {};
+    }
     async prompt(_prompt: string) {}
     async abort() {}
     dispose() {}
@@ -171,10 +199,12 @@ test("agent pool audit: refuses to prune an active branch session", async () => 
 
   await (pool as any).getOrCreate("web:default:branch:active");
 
-  await expect((pool as any).pruneChatBranch("web:default:branch:active")).rejects.toThrow(
-    "Cannot prune a branch while it is active.",
-  );
-  expect(db.getChatBranchByChatJid("web:default:branch:active")?.archived_at).toBeNull();
+  await expect(
+    (pool as any).pruneChatBranch("web:default:branch:active"),
+  ).rejects.toThrow("Cannot prune a branch while it is active.");
+  expect(
+    db.getChatBranchByChatJid("web:default:branch:active")?.archived_at,
+  ).toBeNull();
 
   await pool.shutdown();
   ws.cleanup();

@@ -7,33 +7,26 @@
 
 import { describe, test, expect } from "bun:test";
 import "../../helpers.js";
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { UiBridge } from "../../../src/channels/web/theming/ui-bridge.js";
-import { bindSessionUiContext, createUiContext } from "../../../src/channels/web/ui-context.js";
+import {
+  bindSessionUiContext,
+  createUiContext,
+} from "../../../src/channels/web/ui-context.js";
 
 function makeChannel() {
   const events: Array<{ type: string; payload: any }> = [];
   const channel = {
-    broadcastEvent: (type: string, payload: any) => events.push({ type, payload }),
+    broadcastEvent: (type: string, payload: any) =>
+      events.push({ type, payload }),
   };
   const uiBridge = new UiBridge(channel as any);
   (channel as any).uiBridge = uiBridge;
   return { channel, events, uiBridge };
 }
 
-function createRuntime(session: any): AgentSessionRuntime {
-  return {
-    session,
-    cwd: "/workspace",
-    diagnostics: [],
-    services: {} as any,
-    modelFallbackMessage: undefined,
-    newSession: async () => ({ cancelled: false }),
-    switchSession: async () => ({ cancelled: true }),
-    fork: async () => ({ cancelled: false }),
-    importFromJsonl: async () => ({ cancelled: false }),
-    dispose: async () => {},
-  } as any;
+function createRuntime(session: any): AgentSession {
+  return session;
 }
 
 describe("ui-context", () => {
@@ -41,7 +34,9 @@ describe("ui-context", () => {
     const { channel, events, uiBridge } = makeChannel();
     const ui = createUiContext(channel as any, "web:default");
 
-    const confirmPromise = ui.confirm("Confirm", "Are you sure?", { timeout: 50 });
+    const confirmPromise = ui.confirm("Confirm", "Are you sure?", {
+      timeout: 50,
+    });
     let requestId = Array.from(uiBridge.pendingUiRequests.keys())[0] as string;
     let pending = uiBridge.pendingUiRequests.get(requestId)!;
     clearTimeout(pending.timeoutId);
@@ -91,7 +86,9 @@ describe("ui-context", () => {
     await Bun.sleep(20);
     expect(await selectPromise).toBeUndefined();
 
-    const timeoutEvent = events.find((event) => event.type === "extension_ui_timeout");
+    const timeoutEvent = events.find(
+      (event) => event.type === "extension_ui_timeout",
+    );
     expect(timeoutEvent).toBeDefined();
     expect(uiBridge.pendingUiRequests.size).toBe(0);
   });
@@ -118,7 +115,11 @@ describe("ui-context", () => {
       },
     } as any;
 
-    await bindSessionUiContext(channel as any, createRuntime(session), "web:default");
+    await bindSessionUiContext(
+      channel as any,
+      createRuntime(session),
+      "web:default",
+    );
     expect(boundArgs).toBeDefined();
 
     const actions = boundArgs.commandContextActions;
@@ -135,7 +136,9 @@ describe("ui-context", () => {
     console.error = () => {};
     boundArgs.onError(new Error("boom"));
     console.error = originalError;
-    const errorEvent = events.find((event) => event.type === "extension_ui_error");
+    const errorEvent = events.find(
+      (event) => event.type === "extension_ui_error",
+    );
     expect(errorEvent).toBeDefined();
     expect(errorEvent?.payload?.chat_jid).toBe("web:default");
   });
@@ -150,7 +153,11 @@ describe("ui-context", () => {
       },
     } as any;
 
-    await bindSessionUiContext(channel as any, createRuntime(session), "whatsapp:123");
+    await bindSessionUiContext(
+      channel as any,
+      createRuntime(session),
+      "whatsapp:123",
+    );
     expect(bindCalled).toBe(false);
   });
 });

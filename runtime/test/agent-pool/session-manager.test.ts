@@ -1,23 +1,10 @@
 import { expect, test } from "bun:test";
 
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { AgentSessionManager } from "../../src/agent-pool/session-manager.js";
 
-function createRuntime(session: any): AgentSessionRuntime {
-  return {
-    session,
-    cwd: "/workspace",
-    diagnostics: [],
-    services: {} as any,
-    modelFallbackMessage: undefined,
-    newSession: async () => ({ cancelled: false }),
-    switchSession: async () => ({ cancelled: false }),
-    fork: async () => ({ cancelled: false }),
-    importFromJsonl: async () => ({ cancelled: false }),
-    dispose: async () => {
-      session.dispose?.();
-    },
-  } as any;
+function createRuntime(session: any): AgentSession {
+  return session;
 }
 
 function createManager(overrides: Record<string, unknown> = {}) {
@@ -71,12 +58,12 @@ test("AgentSessionManager creates, caches, and binds main sessions", async () =>
   const first = await fixture.manager.getOrCreate("web:default");
   const second = await fixture.manager.getOrCreate("web:default");
 
-  expect(first.session).toBe(session);
-  expect(second.session).toBe(session);
+  expect(first).toBe(session as any);
+  expect(second).toBe(session as any);
   expect(createCalls).toBe(1);
   expect(fixture.state.bound).toEqual(["web:default"]);
   expect(fixture.state.registered).toEqual(["web:default"]);
-  expect(fixture.pool.get("web:default")?.runtime.session).toBe(session);
+  expect(fixture.pool.get("web:default")?.runtime).toBe(session);
 });
 
 test("AgentSessionManager recreates cached main and side sessions", async () => {
@@ -99,8 +86,14 @@ test("AgentSessionManager recreates cached main and side sessions", async () => 
   };
 
   const fixture = createManager();
-  fixture.pool.set("web:default", { runtime: createRuntime(mainSession), lastUsed: Date.now() });
-  fixture.sidePool.set("web:default", { runtime: createRuntime(sideSession), lastUsed: Date.now() });
+  fixture.pool.set("web:default", {
+    runtime: createRuntime(mainSession),
+    lastUsed: Date.now(),
+  });
+  fixture.sidePool.set("web:default", {
+    runtime: createRuntime(sideSession),
+    lastUsed: Date.now(),
+  });
 
   await fixture.manager.recreate("web:default");
 
@@ -129,8 +122,14 @@ test("AgentSessionManager evicts idle sessions and shuts down remaining sessions
   };
 
   const fixture = createManager();
-  fixture.pool.set("web:old", { runtime: createRuntime(oldSession), lastUsed: Date.now() - 10_000 });
-  fixture.pool.set("web:active", { runtime: createRuntime(activeSession), lastUsed: Date.now() - 10_000 });
+  fixture.pool.set("web:old", {
+    runtime: createRuntime(oldSession),
+    lastUsed: Date.now() - 10_000,
+  });
+  fixture.pool.set("web:active", {
+    runtime: createRuntime(activeSession),
+    lastUsed: Date.now() - 10_000,
+  });
 
   fixture.manager.evictIdle(1_000);
 

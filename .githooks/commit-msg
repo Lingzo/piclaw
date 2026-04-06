@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+msg_file=${1:-}
+if [[ -z "$msg_file" || ! -f "$msg_file" ]]; then
+  echo "commit-msg: missing message file" >&2
+  exit 1
+fi
+
+msg=$(tr -d '\r' < "$msg_file" | awk 'NF && $1 !~ /^#/ { print; exit }')
+pattern='^(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\([a-z0-9._/-]+\))?: .+'
+
+if [[ -z "$msg" ]]; then
+  echo "commit-msg: empty commit message" >&2
+  echo "Example: feat(auth): add login flow" >&2
+  exit 1
+fi
+
+if [[ ! "$msg" =~ $pattern ]]; then
+  echo "commit-msg: invalid Conventional Commit" >&2
+  echo "Example: feat(auth): add login flow" >&2
+  exit 1
+fi

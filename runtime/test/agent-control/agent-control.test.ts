@@ -9,35 +9,25 @@
 import { expect, test } from "bun:test";
 import "../helpers.js";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
-import { applyControlCommand, parseControlCommand } from "../../src/agent-control/index.js";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import {
+  applyControlCommand,
+  parseControlCommand,
+} from "../../src/agent-control/index.js";
 
-const modelReasoning = { provider: "openai", id: "gpt-test", reasoning: true } as any;
-const modelSimple = { provider: "anthropic", id: "claude-test", reasoning: false } as any;
+const modelReasoning = {
+  provider: "openai",
+  id: "gpt-test",
+  reasoning: true,
+} as any;
+const modelSimple = {
+  provider: "anthropic",
+  id: "claude-test",
+  reasoning: false,
+} as any;
 
-function createRuntime(session: StubSession): AgentSessionRuntime {
-  return {
-    session: session as any,
-    cwd: "/workspace",
-    diagnostics: [],
-    services: {} as any,
-    modelFallbackMessage: undefined,
-    newSession: async (options?: any) => ({
-      cancelled: typeof (session as any).newSession === "function" ? !(await (session as any).newSession(options)) : false,
-    }),
-    switchSession: async (path: string) => ({
-      cancelled: typeof (session as any).switchSession === "function" ? !(await (session as any).switchSession(path)) : false,
-    }),
-    fork: async (entryId: string) => (
-      typeof (session as any).fork === "function"
-        ? await (session as any).fork(entryId)
-        : { cancelled: false }
-    ),
-    importFromJsonl: async () => ({ cancelled: false }),
-    dispose: async () => {
-      session.dispose?.();
-    },
-  } as any;
+function createRuntime(session: StubSession): AgentSession {
+  return session as any;
 }
 
 class StubSession {
@@ -48,7 +38,8 @@ class StubSession {
   abortCalls = 0;
   isStreaming = false;
   isCompacting = false;
-  promptCalls: Array<{ text: string; opts: { streamingBehavior: string } }> = [];
+  promptCalls: Array<{ text: string; opts: { streamingBehavior: string } }> =
+    [];
 
   async setModel(model: any) {
     this.model = model;
@@ -94,14 +85,23 @@ const registry = {
 } as any;
 
 test("parseControlCommand parses model and thinking commands", () => {
-  const modelCmd = parseControlCommand("@PiClaw /model openai/gpt-test", /(?:^|\s)@PiClaw\b/i);
+  const modelCmd = parseControlCommand(
+    "@PiClaw /model openai/gpt-test",
+    /(?:^|\s)@PiClaw\b/i,
+  );
   expect(modelCmd?.type).toBe("model");
-  expect(modelCmd && "provider" in modelCmd ? modelCmd.provider : null).toBe("openai");
-  expect(modelCmd && "modelId" in modelCmd ? modelCmd.modelId : null).toBe("gpt-test");
+  expect(modelCmd && "provider" in modelCmd ? modelCmd.provider : null).toBe(
+    "openai",
+  );
+  expect(modelCmd && "modelId" in modelCmd ? modelCmd.modelId : null).toBe(
+    "gpt-test",
+  );
 
   const thinkingCmd = parseControlCommand("/thinking high");
   expect(thinkingCmd?.type).toBe("thinking");
-  expect(thinkingCmd && "level" in thinkingCmd ? thinkingCmd.level : null).toBe("high");
+  expect(thinkingCmd && "level" in thinkingCmd ? thinkingCmd.level : null).toBe(
+    "high",
+  );
 
   const restartCmd = parseControlCommand("/restart");
   expect(restartCmd?.type).toBe("restart");
@@ -111,26 +111,38 @@ test("parseControlCommand parses model and thinking commands", () => {
 
   const shellCmd = parseControlCommand("/shell ls -la");
   expect(shellCmd?.type).toBe("shell");
-  expect(shellCmd && "command" in shellCmd ? shellCmd.command : null).toBe("ls -la");
+  expect(shellCmd && "command" in shellCmd ? shellCmd.command : null).toBe(
+    "ls -la",
+  );
 
   const queueCmd = parseControlCommand("/queue do this next");
   expect(queueCmd?.type).toBe("queue");
-  expect(queueCmd && "message" in queueCmd ? queueCmd.message : null).toBe("do this next");
+  expect(queueCmd && "message" in queueCmd ? queueCmd.message : null).toBe(
+    "do this next",
+  );
 
   const queueAllCmd = parseControlCommand("/queue-all batch this");
   expect(queueAllCmd?.type).toBe("queue_all");
-  expect(queueAllCmd && "message" in queueAllCmd ? queueAllCmd.message : null).toBe("batch this");
+  expect(
+    queueAllCmd && "message" in queueAllCmd ? queueAllCmd.message : null,
+  ).toBe("batch this");
 
   const steerCmd = parseControlCommand("/steer zoom in");
   expect(steerCmd?.type).toBe("steer");
-  expect(steerCmd && "message" in steerCmd ? steerCmd.message : null).toBe("zoom in");
+  expect(steerCmd && "message" in steerCmd ? steerCmd.message : null).toBe(
+    "zoom in",
+  );
 
   const stateCmd = parseControlCommand("/state");
   expect(stateCmd?.type).toBe("state");
 
   const autoCompactCmd = parseControlCommand("/auto-compact on");
   expect(autoCompactCmd?.type).toBe("auto_compact");
-  expect(autoCompactCmd && "enabled" in autoCompactCmd ? autoCompactCmd.enabled : null).toBe(true);
+  expect(
+    autoCompactCmd && "enabled" in autoCompactCmd
+      ? autoCompactCmd.enabled
+      : null,
+  ).toBe(true);
 
   const bashCmd = parseControlCommand("/bash ls");
   expect(bashCmd?.type).toBe("bash");
@@ -139,28 +151,44 @@ test("parseControlCommand parses model and thinking commands", () => {
   const abortCmd = parseControlCommand("/abort");
   expect(abortCmd?.type).toBe("abort");
 
-  const treeCmd = parseControlCommand("/tree abc123 --summarize --label checkpoint");
+  const treeCmd = parseControlCommand(
+    "/tree abc123 --summarize --label checkpoint",
+  );
   expect(treeCmd?.type).toBe("tree");
-  expect(treeCmd && "targetId" in treeCmd ? treeCmd.targetId : null).toBe("abc123");
+  expect(treeCmd && "targetId" in treeCmd ? treeCmd.targetId : null).toBe(
+    "abc123",
+  );
 
   const labelCmd = parseControlCommand("/label abc123 milestone");
   expect(labelCmd?.type).toBe("label");
-  expect(labelCmd && "label" in labelCmd ? labelCmd.label : null).toBe("milestone");
+  expect(labelCmd && "label" in labelCmd ? labelCmd.label : null).toBe(
+    "milestone",
+  );
 
   const agentNameCmd = parseControlCommand("/agent-name Pi");
   expect(agentNameCmd?.type).toBe("agent_name");
-  expect(agentNameCmd && "name" in agentNameCmd ? agentNameCmd.name : null).toBe("Pi");
+  expect(
+    agentNameCmd && "name" in agentNameCmd ? agentNameCmd.name : null,
+  ).toBe("Pi");
 
-  const agentAvatarCmd = parseControlCommand("/agent-avatar https://example.com/avatar.png");
-  expect(agentAvatarCmd?.type).toBe("agent_avatar");
-  expect(agentAvatarCmd && "avatar" in agentAvatarCmd ? agentAvatarCmd.avatar : null).toBe(
-    "https://example.com/avatar.png"
+  const agentAvatarCmd = parseControlCommand(
+    "/agent-avatar https://example.com/avatar.png",
   );
+  expect(agentAvatarCmd?.type).toBe("agent_avatar");
+  expect(
+    agentAvatarCmd && "avatar" in agentAvatarCmd ? agentAvatarCmd.avatar : null,
+  ).toBe("https://example.com/avatar.png");
 
-  const searchCmd = parseControlCommand("/search --scope notes \"token pricing\"");
+  const searchCmd = parseControlCommand(
+    '/search --scope notes "token pricing"',
+  );
   expect(searchCmd?.type).toBe("search_workspace");
-  expect(searchCmd && "query" in searchCmd ? searchCmd.query : null).toBe("token pricing");
-  expect(searchCmd && "scope" in searchCmd ? searchCmd.scope : null).toBe("notes");
+  expect(searchCmd && "query" in searchCmd ? searchCmd.query : null).toBe(
+    "token pricing",
+  );
+  expect(searchCmd && "scope" in searchCmd ? searchCmd.scope : null).toBe(
+    "notes",
+  );
 });
 
 test("applyControlCommand switches model and thinking level", async () => {
@@ -367,10 +395,16 @@ test("/model rejects provider without model id", async () => {
   const parsed = parseControlCommand("/model openai/");
 
   expect(parsed?.type).toBe("model");
-  expect(parsed && "provider" in parsed ? parsed.provider : null).toBe("openai");
+  expect(parsed && "provider" in parsed ? parsed.provider : null).toBe(
+    "openai",
+  );
   expect(parsed && "modelId" in parsed ? parsed.modelId : null).toBeUndefined();
 
-  const result = await applyControlCommand(runtime as any, registry, parsed as any);
+  const result = await applyControlCommand(
+    runtime as any,
+    registry,
+    parsed as any,
+  );
   expect(result.status).toBe("error");
   expect(result.message).toContain("model");
   expect(result.message.toLowerCase()).toContain("provider");
@@ -379,7 +413,11 @@ test("/model rejects provider without model id", async () => {
 test("/model warns when model id matches multiple providers", async () => {
   const session = new StubSession();
   const runtime = createRuntime(session);
-  const duplicateModel = { provider: "azure", id: "gpt-test", reasoning: true } as any;
+  const duplicateModel = {
+    provider: "azure",
+    id: "gpt-test",
+    reasoning: true,
+  } as any;
   const dupRegistry = {
     refresh: () => {},
     getAvailable: () => [modelReasoning, duplicateModel, modelSimple],

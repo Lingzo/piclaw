@@ -19,17 +19,25 @@ function makeFakeApi() {
   return {
     api: {
       on() {},
-      registerTool(tool: any) { tools.set(tool.name, tool); },
-      registerCommand(name: string, opts: any) { commands.set(name, opts); },
+      registerTool(tool: any) {
+        tools.set(tool.name, tool);
+      },
+      registerCommand(name: string, opts: any) {
+        commands.set(name, opts);
+      },
       registerShortcut() {},
       registerFlag() {},
-      getFlag() { return undefined; },
+      getFlag() {
+        return undefined;
+      },
       registerMessageRenderer() {},
       sendMessage() {},
       sendUserMessage() {},
       appendEntry() {},
       setSessionName() {},
-      getSessionName() { return undefined; },
+      getSessionName() {
+        return undefined;
+      },
       setLabel() {},
       exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
       getActiveTools: () => [],
@@ -81,6 +89,6 @@ describe("builtin extension factories", () => {
   });
 
   test("factories array has expected length", () => {
-    expect(builtinExtensionFactories.length).toBe(14);
+    expect(builtinExtensionFactories.length).toBe(16);
   });
 });

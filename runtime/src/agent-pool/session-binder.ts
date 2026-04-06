@@ -2,7 +2,7 @@
  * agent-pool/session-binder.ts – Session binder lifecycle helper.
  */
 
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 
 import type { PoolEntry } from "./session-manager.js";
 
@@ -16,11 +16,11 @@ export interface AgentSessionBinderOptions {
  * Manages the optional session binder callback and applies it to sessions.
  */
 export class AgentSessionBinder {
-  private binder?: (runtime: AgentSessionRuntime, chatJid: string) => Promise<void> | void;
+  private binder?: (runtime: AgentSession, chatJid: string) => Promise<void> | void;
 
   constructor(private readonly options: AgentSessionBinderOptions) {}
 
-  setBinder(binder?: (runtime: AgentSessionRuntime, chatJid: string) => Promise<void> | void): void {
+  setBinder(binder?: (runtime: AgentSession, chatJid: string) => Promise<void> | void): void {
     this.binder = binder;
     if (!binder) return;
     for (const [jid, entry] of this.options.pool) {
@@ -36,7 +36,7 @@ export class AgentSessionBinder {
     }
   }
 
-  async bindSession(runtime: AgentSessionRuntime, chatJid: string): Promise<void> {
+  async bindSession(runtime: AgentSession, chatJid: string): Promise<void> {
     if (!this.binder) return;
     try {
       await this.binder(runtime, chatJid);

@@ -13,16 +13,13 @@
  *   - ensureSessionDir() is also used by agent-control/handlers/session.ts.
  */
 
-import { mkdirSync, existsSync, symlinkSync } from "fs";
-import { join, resolve, dirname } from "path";
+import { mkdirSync } from "fs";
+import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import {
-  type AgentSessionRuntime,
-  type CreateAgentSessionRuntimeFactory,
+  type AgentSession,
   type ExtensionFactory,
-  createAgentSessionFromServices,
-  createAgentSessionRuntime,
-  createAgentSessionServices,
+  createAgentSession,
   getAgentDir,
   SessionManager,
   type AuthStorage,
@@ -31,74 +28,15 @@ import {
 } from "@mariozechner/pi-coding-agent";
 
 import { SESSIONS_DIR, WORKSPACE_DIR } from "../core/config.js";
-import { builtinExtensionFactories } from "../extensions/index.js";
 import { bindImmediateToolActivation } from "./tool-activation-live-update.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 type AgentSessionCreateOptions = {
-  tools: NonNullable<NonNullable<Parameters<typeof createAgentSessionFromServices>[0]>["tools"]>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tools: any[];
   extensionFactories?: ExtensionFactory[];
 };
-
-/**
- * Bundled extension paths that are loaded when their activation env vars
- * are present.  The files live inside the piclaw package tree so that
- * node_modules resolution (for @mariozechner/pi-ai internals etc.) works.
- *
- * Because bun may hoist dependencies, we create a node_modules symlink
- * next to the extensions directory pointing to the nearest real
- * node_modules so that jiti's fallback resolution finds packages like
- * @mariozechner/pi-ai/dist/providers/*.
- */
-const EXTENSIONS_DIR = resolve(__dirname, "../../extensions");
-
-const OPTIONAL_EXTENSIONS: { path: string; envGate?: string }[] = [
-  { path: resolve(EXTENSIONS_DIR, "integrations", "azure-openai.ts"), envGate: "AOAI_BASE_URL" },
-  { path: resolve(EXTENSIONS_DIR, "integrations", "context-mode.ts") },
-  { path: resolve(EXTENSIONS_DIR, "integrations", "bun-runner", "index.ts") },
-  { path: resolve(EXTENSIONS_DIR, "integrations", "keychain", "index.ts") },
-  { path: resolve(EXTENSIONS_DIR, "integrations", "ssh", "index.ts") },
-  { path: resolve(EXTENSIONS_DIR, "integrations", "proxmox", "index.ts") },
-  { path: resolve(EXTENSIONS_DIR, "integrations", "portainer", "index.ts") },
-  { path: resolve(EXTENSIONS_DIR, "browser", "cdp-browser", "index.ts") },
-  { path: resolve(EXTENSIONS_DIR, "platform", "windows", "powershell", "index.ts") },
-  { path: resolve(EXTENSIONS_DIR, "platform", "windows", "win-ui", "index.ts") },
-  { path: resolve(EXTENSIONS_DIR, "viewers", "office-viewer", "index.ts") },
-  { path: resolve(EXTENSIONS_DIR, "integrations", "office-tools", "index.ts") },
-  { path: resolve(EXTENSIONS_DIR, "viewers", "drawio-editor", "index.ts") },
-];
-
-/** Walk up from startDir looking for a node_modules that contains @mariozechner/pi-ai. */
-function findNodeModules(startDir: string): string | null {
-  let dir = startDir;
-  for (let i = 0; i < 10; i++) {
-    const candidate = join(dir, "node_modules");
-    if (existsSync(join(candidate, "@mariozechner", "pi-ai"))) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
-function getBundledExtensionPaths(): string[] {
-  const paths = OPTIONAL_EXTENSIONS
-    .filter(({ envGate }) => !envGate || !!process.env[envGate])
-    .map(({ path }) => path);
-  if (paths.length === 0) return paths;
-
-  // Ensure a node_modules symlink exists next to the extensions dir
-  // so jiti can resolve deep package imports.
-  const link = join(EXTENSIONS_DIR, "node_modules");
-  if (!existsSync(link)) {
-    const target = findNodeModules(EXTENSIONS_DIR);
-    if (target) {
-      try { symlinkSync(target, link); } catch { /* may already exist or read-only */ }
-    }
-  }
-  return paths;
-}
 
 /** Ensure the session directory exists for a chat and return its path. */
 export function ensureSessionDir(chatJid: string): string {
@@ -109,7 +47,10 @@ export function ensureSessionDir(chatJid: string): string {
 
 /** Ensure a named auxiliary session directory exists for a chat and return its path. */
 export function ensureNamedSessionDir(chatJid: string, name: string): string {
-  const dir = join(SESSIONS_DIR, `${sanitiseJid(chatJid)}__${sanitiseJid(name)}`);
+  const dir = join(
+    SESSIONS_DIR,
+    `${sanitiseJid(chatJid)}__${sanitiseJid(name)}`,
+  );
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -127,40 +68,21 @@ export async function createSessionInDir(
     settingsManager: SettingsManager;
     tools: NonNullable<AgentSessionCreateOptions["tools"]>;
     extensionFactories?: ExtensionFactory[];
-  }
-): Promise<AgentSessionRuntime> {
-  const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
-    const services = await createAgentSessionServices({
-      cwd,
-      agentDir: getAgentDir(),
-      authStorage: options.authStorage,
-      modelRegistry: options.modelRegistry,
-      settingsManager: options.settingsManager,
-      resourceLoaderOptions: {
-        extensionFactories: [...builtinExtensionFactories, ...(options.extensionFactories ?? [])],
-        additionalExtensionPaths: getBundledExtensionPaths(),
-      },
-    });
-
-    return {
-      ...(await createAgentSessionFromServices({
-        services,
-        sessionManager,
-        sessionStartEvent,
-        tools: options.tools,
-      })),
-      services,
-      diagnostics: services.diagnostics,
-    };
-  };
-
-  const runtime = await createAgentSessionRuntime(createRuntime, {
+  },
+): Promise<AgentSession> {
+  const result = await createAgentSession({
     cwd: WORKSPACE_DIR,
     agentDir: getAgentDir(),
     sessionManager: SessionManager.continueRecent(WORKSPACE_DIR, sessionDir),
+    authStorage: options.authStorage,
+    modelRegistry: options.modelRegistry,
+    settingsManager: options.settingsManager,
+    tools: options.tools,
   });
 
-  bindImmediateToolActivation(runtime.session as any);
+  const session = result.session;
+  const runtime = (session as any).runtime ?? session;
+  bindImmediateToolActivation(session as any);
   return runtime;
 }
 
@@ -172,8 +94,8 @@ export async function createDefaultSession(
     settingsManager: SettingsManager;
     tools: NonNullable<AgentSessionCreateOptions["tools"]>;
     extensionFactories?: ExtensionFactory[];
-  }
-): Promise<AgentSessionRuntime> {
+  },
+): Promise<AgentSession> {
   const chatSessionDir = ensureSessionDir(chatJid);
   return createSessionInDir(chatSessionDir, options);
 }

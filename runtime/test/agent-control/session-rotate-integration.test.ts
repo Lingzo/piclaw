@@ -10,9 +10,14 @@
 import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "fs";
 import { basename, join } from "path";
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
-import { createTempWorkspace, importFresh, setEnv, type TempWorkspace } from "../helpers.js";
+import {
+  createTempWorkspace,
+  importFresh,
+  setEnv,
+  type TempWorkspace,
+} from "../helpers.js";
 
 let restoreEnv: (() => void) | null = null;
 let tempWorkspace: TempWorkspace | null = null;
@@ -43,21 +48,19 @@ function createAssistantMessage(text: string) {
   } as const;
 }
 
-function createRuntime(session: IntegrationSession): AgentSessionRuntime {
-  return {
-    session: session as any,
-    cwd: session.workspace,
-    diagnostics: [],
-    services: {} as any,
-    modelFallbackMessage: undefined,
-    newSession: async (options?: { parentSession?: string; setup?: (sessionManager: SessionManager) => Promise<void> | void }) => ({
+function createRuntime(session: IntegrationSession): AgentSession {
+  return Object.assign(session, {
+    newSession: async (options?: {
+      parentSession?: string;
+      setup?: (sessionManager: SessionManager) => Promise<void> | void;
+    }) => ({
       cancelled: !(await session.newSession(options)),
     }),
     switchSession: async () => ({ cancelled: false }),
     fork: async () => ({ cancelled: false }),
     importFromJsonl: async () => ({ cancelled: false }),
     dispose: async () => {},
-  } as any;
+  });
 }
 
 class IntegrationSession {
@@ -76,14 +79,24 @@ class IntegrationSession {
     this.workspace = workspace;
     this.sessionDir = sessionDir;
     this.sessionManager = SessionManager.create(workspace, sessionDir);
-    this.sessionManager.appendMessage({ role: "user", content: "Please remember this context", timestamp: Date.now() } as const);
-    this.sessionManager.appendMessage(createAssistantMessage("Initial assistant answer"));
+    this.sessionManager.appendMessage({
+      role: "user",
+      content: "Please remember this context",
+      timestamp: Date.now(),
+    } as const);
+    this.sessionManager.appendMessage(
+      createAssistantMessage("Initial assistant answer"),
+    );
     this.sessionFile = this.sessionManager.getSessionFile();
   }
 
   async compact() {
     const firstKeptEntryId = this.sessionManager.getEntries()[0]?.id ?? "root";
-    this.sessionManager.appendCompaction("Rotation summary", firstKeptEntryId, 1234);
+    this.sessionManager.appendCompaction(
+      "Rotation summary",
+      firstKeptEntryId,
+      1234,
+    );
     this.sessionFile = this.sessionManager.getSessionFile();
     return {
       summary: "Rotation summary",
@@ -92,7 +105,10 @@ class IntegrationSession {
     };
   }
 
-  async newSession(options?: { parentSession?: string; setup?: (sessionManager: SessionManager) => Promise<void> | void }) {
+  async newSession(options?: {
+    parentSession?: string;
+    setup?: (sessionManager: SessionManager) => Promise<void> | void;
+  }) {
     const manager = SessionManager.create(this.workspace, this.sessionDir);
     manager.newSession({ parentSession: options?.parentSession });
     if (options?.setup) {
@@ -112,8 +128,12 @@ test("session rotation archives the old file and continueRecent resumes the rota
     PICLAW_DATA: tempWorkspace.data,
   });
 
-  const { ensureSessionDir } = await importFresh<typeof import("../src/agent-pool/session.js")>("../src/agent-pool/session.js");
-  const { handleSessionRotate } = await importFresh<typeof import("../src/agent-control/handlers/session.js")>("../src/agent-control/handlers/session.js");
+  const { ensureSessionDir } = await importFresh<
+    typeof import("../src/agent-pool/session.js")
+  >("../src/agent-pool/session.js");
+  const { handleSessionRotate } = await importFresh<
+    typeof import("../src/agent-control/handlers/session.js")
+  >("../src/agent-control/handlers/session.js");
 
   const sessionDir = ensureSessionDir("web:default");
   const session = new IntegrationSession(tempWorkspace.workspace, sessionDir);
@@ -137,21 +157,36 @@ test("session rotation archives the old file and continueRecent resumes the rota
   expect(rotatedSessionFile && existsSync(rotatedSessionFile)).toBe(true);
   expect(previousSessionFile && existsSync(previousSessionFile)).toBe(false);
 
-  const archivePath = join(sessionDir, "archive", basename(previousSessionFile!));
+  const archivePath = join(
+    sessionDir,
+    "archive",
+    basename(previousSessionFile!),
+  );
   expect(existsSync(archivePath)).toBe(true);
 
-  const resumed = SessionManager.continueRecent(tempWorkspace.workspace, sessionDir);
+  const resumed = SessionManager.continueRecent(
+    tempWorkspace.workspace,
+    sessionDir,
+  );
   expect(resumed.getSessionFile()).toBe(rotatedSessionFile);
   expect(resumed.getHeader()?.parentSession).toBe(archivePath);
 
   const resumedContext = resumed.buildSessionContext();
-  expect(resumedContext.messages.some((message) => message.role === "compactionSummary")).toBe(true);
   expect(
-    resumedContext.messages.some((message) =>
-      message.role === "assistant"
-        && Array.isArray(message.content)
-        && message.content.some((block) => block.type === "text" && block.text === "Initial assistant answer")
-    )
+    resumedContext.messages.some(
+      (message) => message.role === "compactionSummary",
+    ),
+  ).toBe(true);
+  expect(
+    resumedContext.messages.some(
+      (message) =>
+        message.role === "assistant" &&
+        Array.isArray(message.content) &&
+        message.content.some(
+          (block) =>
+            block.type === "text" && block.text === "Initial assistant answer",
+        ),
+    ),
   ).toBe(true);
 });
 
@@ -163,8 +198,12 @@ test("session rotation rejects queued follow-ups and leaves the active file unto
     PICLAW_DATA: tempWorkspace.data,
   });
 
-  const { ensureSessionDir } = await importFresh<typeof import("../src/agent-pool/session.js")>("../src/agent-pool/session.js");
-  const { handleSessionRotate } = await importFresh<typeof import("../src/agent-control/handlers/session.js")>("../src/agent-control/handlers/session.js");
+  const { ensureSessionDir } = await importFresh<
+    typeof import("../src/agent-pool/session.js")
+  >("../src/agent-pool/session.js");
+  const { handleSessionRotate } = await importFresh<
+    typeof import("../src/agent-control/handlers/session.js")
+  >("../src/agent-control/handlers/session.js");
 
   const sessionDir = ensureSessionDir("web:default");
   const session = new IntegrationSession(tempWorkspace.workspace, sessionDir);
@@ -178,8 +217,12 @@ test("session rotation rejects queued follow-ups and leaves the active file unto
   });
 
   expect(result.status).toBe("error");
-  expect(result.message).toContain("queued steering or follow-up messages are pending");
+  expect(result.message).toContain(
+    "queued steering or follow-up messages are pending",
+  );
   expect(session.sessionFile).toBe(previousSessionFile);
   expect(previousSessionFile && existsSync(previousSessionFile)).toBe(true);
-  expect(existsSync(join(sessionDir, "archive", basename(previousSessionFile!)))).toBe(false);
+  expect(
+    existsSync(join(sessionDir, "archive", basename(previousSessionFile!))),
+  ).toBe(false);
 });

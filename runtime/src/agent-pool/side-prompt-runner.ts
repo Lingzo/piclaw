@@ -2,8 +2,19 @@
  * agent-pool/side-prompt-runner.ts – runSidePrompt orchestration helpers.
  */
 
-import type { AgentSession, AgentSessionEvent, AgentSessionRuntime, ModelRegistry } from "@mariozechner/pi-coding-agent";
-import { type AssistantMessageEvent, streamSimple, type AssistantMessageEventStream, type Model, type Api, type Usage } from "@mariozechner/pi-ai";
+import type {
+  AgentSession,
+  AgentSessionEvent,
+  ModelRegistry,
+} from "@mariozechner/pi-coding-agent";
+import {
+  type AssistantMessageEvent,
+  streamSimple,
+  type AssistantMessageEventStream,
+  type Model,
+  type Api,
+  type Usage,
+} from "@mariozechner/pi-ai";
 
 import { getAgentRuntimeConfig } from "../core/config.js";
 import { detectChannel } from "../router.js";
@@ -23,8 +34,11 @@ import type { SidePromptOptions, SidePromptResult } from "./contracts.js";
 /** Dependencies required to run side prompts. */
 export interface SidePromptRunnerOptions {
   getOrCreate: (chatJid: string) => Promise<AgentSession>;
-  getOrCreateSideRuntime: (chatJid: string) => Promise<AgentSessionRuntime>;
-  syncSideSessionFromMain: (mainSession: AgentSession, sideRuntime: AgentSessionRuntime) => Promise<void>;
+  getOrCreateSideRuntime: (chatJid: string) => Promise<AgentSession>;
+  syncSideSessionFromMain: (
+    mainSession: AgentSession,
+    sideRuntime: AgentSession,
+  ) => Promise<void>;
   modelRegistry: ModelRegistry;
   sideStreamSimple?: (
     model: Model<Api>,
@@ -44,7 +58,13 @@ export async function runSidePrompt(
   const session = await deps.getOrCreate(chatJid);
   const model = session.model;
   if (!model) {
-    return { status: "error", result: null, thinking: null, error: "No active model selected.", model: null };
+    return {
+      status: "error",
+      result: null,
+      thinking: null,
+      error: "No active model selected.",
+      model: null,
+    };
   }
 
   if (deps.sideStreamSimple) {
@@ -54,7 +74,9 @@ export async function runSidePrompt(
         status: "error",
         result: null,
         thinking: null,
-        error: auth.error || `No credentials available for ${model.provider}/${model.id}.`,
+        error:
+          auth.error ||
+          `No credentials available for ${model.provider}/${model.id}.`,
         model: `${model.provider}/${model.id}`,
       };
     }
@@ -74,7 +96,9 @@ export async function runSidePrompt(
       {
         apiKey: auth.apiKey,
         headers: auth.headers,
-        reasoning: toSideReasoning((session as AgentSession & { thinkingLevel?: unknown }).thinkingLevel),
+        reasoning: toSideReasoning(
+          (session as AgentSession & { thinkingLevel?: unknown }).thinkingLevel,
+        ),
         signal: options.signal,
       },
     );
@@ -118,7 +142,10 @@ export async function runSidePrompt(
       });
     }
 
-    if (finalMessage.stopReason === "error" || finalMessage.stopReason === "aborted") {
+    if (
+      finalMessage.stopReason === "error" ||
+      finalMessage.stopReason === "aborted"
+    ) {
       return {
         status: "error",
         result: null,
@@ -142,7 +169,7 @@ export async function runSidePrompt(
 
   const sideRuntime = await deps.getOrCreateSideRuntime(chatJid);
   await deps.syncSideSessionFromMain(session, sideRuntime);
-  const sideSession = sideRuntime.session;
+  const sideSession = sideRuntime;
 
   let text = "";
   let thinking = "";
@@ -176,7 +203,15 @@ export async function runSidePrompt(
     }
 
     if (event.type === "message_end") {
-      const message = event.message as { role?: string; stopReason?: string; errorMessage?: string; usage?: Usage; content?: unknown[] } | undefined;
+      const message = event.message as
+        | {
+            role?: string;
+            stopReason?: string;
+            errorMessage?: string;
+            usage?: Usage;
+            content?: unknown[];
+          }
+        | undefined;
       if (message?.role === "assistant") {
         finalMessage = message as SideAssistantMessage;
         try {
@@ -209,7 +244,9 @@ export async function runSidePrompt(
 
   try {
     await withChatContext(chatJid, channel, async () => {
-      const composedPrompt = options.systemPrompt ? `${options.systemPrompt}\n\n${prompt}` : prompt;
+      const composedPrompt = options.systemPrompt
+        ? `${options.systemPrompt}\n\n${prompt}`
+        : prompt;
       await sideSession.prompt(composedPrompt);
       await waitForSessionIdle(sideSession);
     });
@@ -221,7 +258,11 @@ export async function runSidePrompt(
       status: "error",
       result: null,
       thinking: thinking || null,
-      error: timedOut ? `Timed out after ${formatTimeoutDuration(timeoutMs)}` : (err instanceof Error ? err.message : String(err)),
+      error: timedOut
+        ? `Timed out after ${formatTimeoutDuration(timeoutMs)}`
+        : err instanceof Error
+          ? err.message
+          : String(err),
       model: `${model.provider}/${model.id}`,
       stopReason: timedOut ? "aborted" : "error",
     };
@@ -238,7 +279,9 @@ export async function runSidePrompt(
         status: "error",
         result: null,
         thinking: thinking || null,
-        error: timedOut ? `Timed out after ${formatTimeoutDuration(timeoutMs)}` : "Side prompt finished without a response.",
+        error: timedOut
+          ? `Timed out after ${formatTimeoutDuration(timeoutMs)}`
+          : "Side prompt finished without a response.",
         model: `${model.provider}/${model.id}`,
         stopReason: timedOut ? "aborted" : "error",
       };
@@ -253,12 +296,18 @@ export async function runSidePrompt(
   }
 
   const completedMessage = finalMessage as SideAssistantMessage;
-  if (timedOut || completedMessage.stopReason === "error" || completedMessage.stopReason === "aborted") {
+  if (
+    timedOut ||
+    completedMessage.stopReason === "error" ||
+    completedMessage.stopReason === "aborted"
+  ) {
     return {
       status: "error",
       result: null,
       thinking: thinking || extractAssistantThinking(completedMessage) || null,
-      error: timedOut ? `Timed out after ${formatTimeoutDuration(timeoutMs)}` : (completedMessage.errorMessage || "Side prompt failed."),
+      error: timedOut
+        ? `Timed out after ${formatTimeoutDuration(timeoutMs)}`
+        : completedMessage.errorMessage || "Side prompt failed.",
       model: `${model.provider}/${model.id}`,
       usage: completedMessage.usage as Usage | undefined,
       stopReason: timedOut ? "aborted" : completedMessage.stopReason,
@@ -267,7 +316,11 @@ export async function runSidePrompt(
 
   return {
     status: "success",
-    result: text || extractAssistantText(completedMessage) || sideSession.getLastAssistantText() || null,
+    result:
+      text ||
+      extractAssistantText(completedMessage) ||
+      sideSession.getLastAssistantText() ||
+      null,
     thinking: thinking || extractAssistantThinking(completedMessage) || null,
     model: `${model.provider}/${model.id}`,
     usage: completedMessage.usage as Usage | undefined,

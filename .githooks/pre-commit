@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+mapfile -d '' files < <(git diff --cached --name-only -z --diff-filter=ACMR)
+(( ${#files[@]} == 0 )) && exit 0
+
+have() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+stage() {
+  git add -- "$1"
+}
+
+run_prettier() {
+  local file="$1"
+  if have prettier; then
+    prettier --write "$file"
+    return 0
+  fi
+  if have npx; then
+    npx --yes prettier --write "$file"
+    return 0
+  fi
+  echo "pre-commit: prettier not found for $file" >&2
+  return 1
+}
+
+run_python() {
+  local file="$1"
+  if have ruff; then
+    ruff format "$file"
+    ruff check "$file"
+    return 0
+  fi
+  if have black; then
+    black "$file"
+    return 0
+  fi
+  echo "pre-commit: ruff or black not found for $file" >&2
+  return 1
+}
+
+run_clang_format() {
+  local file="$1"
+  if ! have clang-format; then
+    echo "pre-commit: clang-format not found for $file" >&2
+    return 1
+  fi
+  clang-format -i "$file"
+}
+
+for file in "${files[@]}"; do
+  [[ -e "$file" ]] || continue
+  case "$file" in
+    *.py)
+      run_python "$file"
+      stage "$file"
+      ;;
+    *.go)
+      if ! have gofmt; then
+        echo "pre-commit: gofmt not found for $file" >&2
+        exit 1
+      fi
+      gofmt -w "$file"
+      stage "$file"
+      ;;
+    *.c|*.cc|*.cpp|*.cxx|*.h|*.hh|*.hpp|*.hxx)
+      run_clang_format "$file"
+      stage "$file"
+      ;;
+    *.js|*.jsx|*.ts|*.tsx|*.html|*.htm|*.json|*.css|*.md|*.yml|*.yaml)
+      run_prettier "$file"
+      stage "$file"
+      ;;
+  esac
+done

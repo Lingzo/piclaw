@@ -1,21 +1,10 @@
 import { expect, test } from "bun:test";
 
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import { AgentSessionBinder } from "../../src/agent-pool/session-binder.js";
 
-function createRuntime(session: any): AgentSessionRuntime {
-  return {
-    session,
-    cwd: "/workspace",
-    diagnostics: [],
-    services: {} as any,
-    modelFallbackMessage: undefined,
-    newSession: async () => ({ cancelled: false }),
-    switchSession: async () => ({ cancelled: false }),
-    fork: async () => ({ cancelled: false }),
-    importFromJsonl: async () => ({ cancelled: false }),
-    dispose: async () => {},
-  } as any;
+function createRuntime(session: any): AgentSession {
+  return session as any;
 }
 
 test("AgentSessionBinder binds existing sessions and handles binder failures", async () => {
@@ -23,8 +12,14 @@ test("AgentSessionBinder binds existing sessions and handles binder failures", a
   const calls: Array<{ session: string; chatJid: string }> = [];
   const errors: string[] = [];
 
-  pool.set("web:one", { runtime: createRuntime({ id: "one" }), lastUsed: Date.now() });
-  pool.set("web:two", { runtime: createRuntime({ id: "two" }), lastUsed: Date.now() });
+  pool.set("web:one", {
+    runtime: createRuntime({ id: "one" }),
+    lastUsed: Date.now(),
+  });
+  pool.set("web:two", {
+    runtime: createRuntime({ id: "two" }),
+    lastUsed: Date.now(),
+  });
 
   const binder = new AgentSessionBinder({
     pool: pool as any,
@@ -32,7 +27,7 @@ test("AgentSessionBinder binds existing sessions and handles binder failures", a
   });
 
   binder.setBinder((runtime: any, chatJid) => {
-    const session = runtime.session;
+    const session = runtime;
     calls.push({ session: session.id, chatJid });
     if (chatJid === "web:two") throw new Error("boom");
   });

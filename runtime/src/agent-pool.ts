@@ -25,14 +25,16 @@ import { mkdirSync } from "fs";
 import { join } from "path";
 import {
   type AgentSession,
-  type AgentSessionRuntime,
   AuthStorage,
   ModelRegistry,
   SettingsManager,
   getAgentDir,
 } from "@mariozechner/pi-coding-agent";
 
-import { type AgentControlCommand, type AgentControlResult } from "./agent-control/index.js";
+import {
+  type AgentControlCommand,
+  type AgentControlResult,
+} from "./agent-control/index.js";
 import { SESSIONS_DIR, WORKSPACE_DIR } from "./core/config.js";
 import { createTrackedBashOperations } from "./tools/tracked-bash.js";
 import { type ActiveChatAgent } from "./agent-pool/branch-manager.js";
@@ -46,7 +48,10 @@ import {
 import { runSidePrompt as runSidePromptInternal } from "./agent-pool/side-prompt-runner.js";
 import { runAgentPrompt } from "./agent-pool/run-agent-orchestrator.js";
 import { type AvailableModelsResult } from "./agent-pool/runtime-facade.js";
-import { createAgentPoolServices, type AgentPoolServices } from "./agent-pool/service-factory.js";
+import {
+  createAgentPoolServices,
+  type AgentPoolServices,
+} from "./agent-pool/service-factory.js";
 import { type PoolEntry } from "./agent-pool/session-manager.js";
 import {
   type ChatBranchRecord,
@@ -75,7 +80,12 @@ import {
   runStoredPortainerWorkflow,
   setStoredPortainerConfig,
 } from "./portainer/handlers.js";
-import { applyLiveSshConfig, clearLiveSshConfig, hasLiveChatSshSession, resolveSshCoreConfigFromChatConfig } from "./extensions/ssh-core.js";
+import {
+  applyLiveSshConfig,
+  clearLiveSshConfig,
+  hasLiveChatSshSession,
+  resolveSshCoreConfigFromChatConfig,
+} from "./extensions/ssh-core.js";
 import { createLogger } from "./utils/logger.js";
 
 const log = createLogger("agent-pool");
@@ -98,8 +108,14 @@ function parsePositiveMs(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-const IDLE_TTL = parsePositiveMs(process.env.PICLAW_SESSION_IDLE_TTL_MS, DEFAULT_IDLE_TTL);
-const CLEANUP_INTERVAL = parsePositiveMs(process.env.PICLAW_SESSION_CLEANUP_INTERVAL_MS, DEFAULT_CLEANUP_INTERVAL);
+const IDLE_TTL = parsePositiveMs(
+  process.env.PICLAW_SESSION_IDLE_TTL_MS,
+  DEFAULT_IDLE_TTL,
+);
+const CLEANUP_INTERVAL = parsePositiveMs(
+  process.env.PICLAW_SESSION_CLEANUP_INTERVAL_MS,
+  DEFAULT_CLEANUP_INTERVAL,
+);
 
 /**
  * Manages a pool of persistent AgentSession instances keyed by chat JID.
@@ -117,7 +133,10 @@ export class AgentPool {
   // Shared across all sessions (expensive to create, safe to reuse)
   private authStorage: AuthStorage;
   private modelRegistry: ModelRegistry;
-  private settingsManager = SettingsManager.create(WORKSPACE_DIR, getAgentDir());
+  private settingsManager = SettingsManager.create(
+    WORKSPACE_DIR,
+    getAgentDir(),
+  );
   private logsDir = join(WORKSPACE_DIR, "logs");
   private createSession?: AgentPoolOptions["createSession"];
   private createSideSession?: AgentPoolOptions["createSideSession"];
@@ -135,7 +154,8 @@ export class AgentPool {
     this.createSession = options.createSession;
     this.createSideSession = options.createSideSession;
     this.authStorage = AuthStorage.create();
-    this.modelRegistry = options.modelRegistry ?? ModelRegistry.create(this.authStorage);
+    this.modelRegistry =
+      options.modelRegistry ?? ModelRegistry.create(this.authStorage);
     ({
       attachments: this.attachments,
       sessionBinder: this.sessionBinder,
@@ -181,22 +201,32 @@ export class AgentPool {
     });
     mkdirSync(SESSIONS_DIR, { recursive: true });
     mkdirSync(this.logsDir, { recursive: true });
-    this.cleanupTimer = setInterval(() => this.sessionManager.evictIdle(IDLE_TTL), CLEANUP_INTERVAL);
+    this.cleanupTimer = setInterval(
+      () => this.sessionManager.evictIdle(IDLE_TTL),
+      CLEANUP_INTERVAL,
+    );
   }
 
-  setSessionBinder(binder?: (runtime: AgentSessionRuntime, chatJid: string) => Promise<void> | void): void {
+  setSessionBinder(
+    binder?: (runtime: AgentSession, chatJid: string) => Promise<void> | void,
+  ): void {
     this.sessionBinder.setBinder(binder);
   }
 
   /** Run a prompt against the persistent session for `chatJid`. */
-  async runAgent(prompt: string, chatJid: string, options: RunAgentOptions = {}): Promise<AgentOutput> {
+  async runAgent(
+    prompt: string,
+    chatJid: string,
+    options: RunAgentOptions = {},
+  ): Promise<AgentOutput> {
     return runAgentPrompt(prompt, chatJid, options, {
       getOrCreateRuntime: (nextChatJid) => this.getOrCreateRuntime(nextChatJid),
       turnCoordinator: this.turnCoordinator,
       clearAttachments: (nextChatJid) => this.attachments.clear(nextChatJid),
       takeAttachments: (nextChatJid) => this.attachments.take(nextChatJid),
       logsDir: this.logsDir,
-      setActiveForkBaseLeaf: (nextChatJid, leafId) => this.activeForkBaseLeafByChat.set(nextChatJid, leafId),
+      setActiveForkBaseLeaf: (nextChatJid, leafId) =>
+        this.activeForkBaseLeafByChat.set(nextChatJid, leafId),
       clearActiveForkBaseLeaf: (nextChatJid) => {
         this.activeForkBaseLeafByChat.delete(nextChatJid);
       },
@@ -206,7 +236,10 @@ export class AgentPool {
     });
   }
 
-  async applyControlCommand(chatJid: string, command: AgentControlCommand): Promise<AgentControlResult> {
+  async applyControlCommand(
+    chatJid: string,
+    command: AgentControlCommand,
+  ): Promise<AgentControlResult> {
     return this.runtimeFacade.applyControlCommand(chatJid, command);
   }
 
@@ -214,11 +247,17 @@ export class AgentPool {
     return this.runtimeFacade.getCurrentModelLabel(chatJid);
   }
 
-  async runSidePrompt(chatJid: string, prompt: string, options: SidePromptOptions = {}): Promise<SidePromptResult> {
+  async runSidePrompt(
+    chatJid: string,
+    prompt: string,
+    options: SidePromptOptions = {},
+  ): Promise<SidePromptResult> {
     return runSidePromptInternal(chatJid, prompt, options, {
       getOrCreate: (nextChatJid) => this.getOrCreate(nextChatJid),
-      getOrCreateSideRuntime: (nextChatJid) => this.getOrCreateSideRuntime(nextChatJid),
-      syncSideSessionFromMain: (mainSession, sideRuntime) => this.syncSideSessionFromMain(mainSession, sideRuntime),
+      getOrCreateSideRuntime: (nextChatJid) =>
+        this.getOrCreateSideRuntime(nextChatJid),
+      syncSideSessionFromMain: (mainSession, sideRuntime) =>
+        this.syncSideSessionFromMain(mainSession, sideRuntime),
       modelRegistry: this.modelRegistry,
       sideStreamSimple: this.sideStreamSimple,
       onWarn: (message, details) => log.warn(message, details),
@@ -251,7 +290,10 @@ export class AgentPool {
    * Restore the session tree to a previously saved position.
    * Navigates back to the saved leaf, leaving the task's output in a side branch.
    */
-  async restoreSessionPosition(chatJid: string, leafId: string | null): Promise<void> {
+  async restoreSessionPosition(
+    chatJid: string,
+    leafId: string | null,
+  ): Promise<void> {
     return this.runtimeFacade.restoreSessionPosition(chatJid, leafId);
   }
 
@@ -265,7 +307,7 @@ export class AgentPool {
 
   registerModelProvider(
     providerName: string,
-    config: Parameters<ModelRegistry["registerProvider"]>[1]
+    config: Parameters<ModelRegistry["registerProvider"]>[1],
   ): void {
     this.runtimeFacade.registerModelProvider(providerName, config);
   }
@@ -282,7 +324,10 @@ export class AgentPool {
     return this.runtimeFacade.isActive(chatJid);
   }
 
-  private ensureBranchRegistration(chatJid: string, session?: AgentSession | null): ChatBranchRecord {
+  private ensureBranchRegistration(
+    chatJid: string,
+    session?: AgentSession | null,
+  ): ChatBranchRecord {
     return this.branchManager.ensureBranchRegistration(chatJid, session);
   }
 
@@ -317,7 +362,7 @@ export class AgentPool {
 
   listKnownChats(
     rootChatJid?: string | null,
-    options?: { includeArchived?: boolean }
+    options?: { includeArchived?: boolean },
   ): ActiveChatAgent[] {
     return this.branchManager.listKnownChats(rootChatJid, options);
   }
@@ -326,7 +371,9 @@ export class AgentPool {
     return this.branchManager.findActiveChatByAgentName(agentName);
   }
 
-  findChatByAgentName(agentName: string): { chat_jid: string; agent_name: string } | null {
+  findChatByAgentName(
+    agentName: string,
+  ): { chat_jid: string; agent_name: string } | null {
     return this.branchManager.findChatByAgentName(agentName);
   }
 
@@ -337,18 +384,27 @@ export class AgentPool {
   async queueStreamingMessage(
     chatJid: string,
     text: string,
-    behavior: "steer" | "followUp"
+    behavior: "steer" | "followUp",
   ): Promise<{ queued: boolean; error?: string }> {
     return this.runtimeFacade.queueStreamingMessage(chatJid, text, behavior);
   }
 
   /** Remove one queued follow-up message (first content match) from an active session queue. */
-  async removeQueuedFollowupMessage(chatJid: string, queuedContent?: string): Promise<boolean> {
-    return this.runtimeFacade.removeQueuedFollowupMessage(chatJid, queuedContent);
+  async removeQueuedFollowupMessage(
+    chatJid: string,
+    queuedContent?: string,
+  ): Promise<boolean> {
+    return this.runtimeFacade.removeQueuedFollowupMessage(
+      chatJid,
+      queuedContent,
+    );
   }
 
   /** Execute a raw slash command in the AgentSession (extension commands). */
-  async applySlashCommand(chatJid: string, rawText: string): Promise<AgentControlResult> {
+  async applySlashCommand(
+    chatJid: string,
+    rawText: string,
+  ): Promise<AgentControlResult> {
     return this.runtimeFacade.applySlashCommand(chatJid, rawText);
   }
 
@@ -360,16 +416,23 @@ export class AgentPool {
     chatJid: string,
     config: Omit<SshConfig, "chat_jid" | "created_at" | "updated_at">,
   ): Promise<SshConfigSetResult> {
-    const apply_timing: SshConfigApplyTiming = hasLiveChatSshSession(chatJid) ? "immediate" : "next_session";
+    const apply_timing: SshConfigApplyTiming = hasLiveChatSshSession(chatJid)
+      ? "immediate"
+      : "next_session";
     if (apply_timing === "immediate") {
-      await applyLiveSshConfig(chatJid, resolveSshCoreConfigFromChatConfig(config));
+      await applyLiveSshConfig(
+        chatJid,
+        resolveSshCoreConfigFromChatConfig(config),
+      );
     }
     const next = upsertSshConfig({ chat_jid: chatJid, ...config });
     return { config: next, apply_timing };
   }
 
   async clearSshConfig(chatJid: string): Promise<SshConfigClearResult> {
-    const apply_timing: SshConfigApplyTiming = hasLiveChatSshSession(chatJid) ? "immediate" : "next_session";
+    const apply_timing: SshConfigApplyTiming = hasLiveChatSshSession(chatJid)
+      ? "immediate"
+      : "next_session";
     const deleted = deleteSshConfig(chatJid);
     if (apply_timing === "immediate") {
       await clearLiveSshConfig(chatJid);
@@ -388,20 +451,26 @@ export class AgentPool {
 
   // ── internal ────────────────────────────────────────────
 
-  private async getOrCreateRuntime(chatJid: string): Promise<AgentSessionRuntime> {
+  private async getOrCreateRuntime(chatJid: string): Promise<AgentSession> {
     return this.sessionManager.getOrCreate(chatJid);
   }
 
   private async getOrCreate(chatJid: string): Promise<AgentSession> {
-    return (await this.getOrCreateRuntime(chatJid)).session;
+    return await this.getOrCreateRuntime(chatJid);
   }
 
-  private async getOrCreateSideRuntime(chatJid: string): Promise<AgentSessionRuntime> {
+  private async getOrCreateSideRuntime(chatJid: string): Promise<AgentSession> {
     return this.sessionManager.getOrCreateSide(chatJid);
   }
 
-  private async syncSideSessionFromMain(mainSession: AgentSession, sideRuntime: AgentSessionRuntime): Promise<void> {
-    return this.sessionManager.syncSideSessionFromMain(mainSession, sideRuntime);
+  private async syncSideSessionFromMain(
+    mainSession: AgentSession,
+    sideRuntime: AgentSession,
+  ): Promise<void> {
+    return this.sessionManager.syncSideSessionFromMain(
+      mainSession,
+      sideRuntime,
+    );
   }
 
   private evictIdle(): void {

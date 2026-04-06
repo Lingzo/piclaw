@@ -7,7 +7,11 @@
 
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { ImageContent, Message, TextContent } from "@mariozechner/pi-ai";
-import type { AgentSession, AgentSessionRuntime, SessionEntry, SessionManager } from "@mariozechner/pi-coding-agent";
+import type {
+  AgentSession,
+  SessionEntry,
+  SessionManager,
+} from "@mariozechner/pi-coding-agent";
 
 import { getIdentityConfig } from "../core/config.js";
 import {
@@ -22,7 +26,10 @@ import {
   type ChatBranchRecord,
 } from "../db.js";
 import { createUuid } from "../utils/ids.js";
-import { forcePersistSessionFile, seedRotatedSession } from "../session-rotation.js";
+import {
+  forcePersistSessionFile,
+  seedRotatedSession,
+} from "../session-rotation.js";
 import type { PoolEntry } from "./session-manager.js";
 
 /** Active/known chat metadata surfaced by AgentPool. */
@@ -45,8 +52,8 @@ export interface AgentBranchManagerOptions {
   pool: Map<string, PoolEntry>;
   sidePool: Map<string, PoolEntry>;
   activeForkBaseLeafByChat: Map<string, string | null>;
-  getOrCreateRuntime: (chatJid: string) => Promise<AgentSessionRuntime>;
-  refreshRuntime: (chatJid: string, runtime: AgentSessionRuntime) => Promise<void>;
+  getOrCreateRuntime: (chatJid: string) => Promise<AgentSession>;
+  refreshRuntime: (chatJid: string, runtime: AgentSession) => Promise<void>;
   isActive: (chatJid: string) => boolean;
   onWarn?: (message: string, details: Record<string, unknown>) => void;
 }
@@ -60,13 +67,20 @@ function normalizeAgentHandlePart(value: string): string {
     .replace(/-{2,}/g, "-");
 }
 
-function deriveAgentHandle(chatJid: string, sessionName?: string | null): string {
-  const sessionHandle = sessionName ? normalizeAgentHandlePart(sessionName) : "";
+function deriveAgentHandle(
+  chatJid: string,
+  sessionName?: string | null,
+): string {
+  const sessionHandle = sessionName
+    ? normalizeAgentHandlePart(sessionName)
+    : "";
   if (sessionHandle) return sessionHandle;
 
   const jidTail = chatJid.split(/[:/]/).filter(Boolean).pop() || chatJid;
   if (jidTail === "default") {
-    const configHandle = normalizeAgentHandlePart(getIdentityConfig().assistantName || "");
+    const configHandle = normalizeAgentHandlePart(
+      getIdentityConfig().assistantName || "",
+    );
     if (configHandle) return configHandle;
   }
 
@@ -77,17 +91,25 @@ function deriveAgentHandle(chatJid: string, sessionName?: string | null): string
 }
 
 function buildForkedChatJid(sourceChatJid: string): string {
-  const root = sourceChatJid.startsWith("web:") ? sourceChatJid : `web:${sourceChatJid}`;
+  const root = sourceChatJid.startsWith("web:")
+    ? sourceChatJid
+    : `web:${sourceChatJid}`;
   return `${root}:branch:${createUuid("chat").split("-").pop()}`;
 }
 
-function createVolatileBranchRecord(chatJid: string, session?: AgentSession | null): ChatBranchRecord {
+function createVolatileBranchRecord(
+  chatJid: string,
+  session?: AgentSession | null,
+): ChatBranchRecord {
   return {
     branch_id: `volatile:${chatJid}`,
     chat_jid: chatJid,
     root_chat_jid: chatJid,
     parent_branch_id: null,
-    agent_name: deriveAgentHandle(chatJid, session?.sessionName?.trim() || null),
+    agent_name: deriveAgentHandle(
+      chatJid,
+      session?.sessionName?.trim() || null,
+    ),
     display_name: null,
     created_at: new Date(0).toISOString(),
     updated_at: new Date(0).toISOString(),
@@ -104,24 +126,27 @@ type LegacyCustomEntry = {
 
 type SeedBranchEntry = SessionEntry | LegacyCustomEntry;
 
-type AppendableAgentMessage = Message | {
-  role: "bashExecution";
-  command: string;
-  output: string;
-  exitCode: number | undefined;
-  cancelled: boolean;
-  truncated: boolean;
-  fullOutputPath?: string;
-  timestamp: number;
-  excludeFromContext?: boolean;
-} | {
-  role: "custom";
-  customType: string;
-  content: string | (TextContent | ImageContent)[];
-  display: boolean;
-  details?: unknown;
-  timestamp: number;
-};
+type AppendableAgentMessage =
+  | Message
+  | {
+      role: "bashExecution";
+      command: string;
+      output: string;
+      exitCode: number | undefined;
+      cancelled: boolean;
+      truncated: boolean;
+      fullOutputPath?: string;
+      timestamp: number;
+      excludeFromContext?: boolean;
+    }
+  | {
+      role: "custom";
+      customType: string;
+      content: string | (TextContent | ImageContent)[];
+      display: boolean;
+      details?: unknown;
+      timestamp: number;
+    };
 
 type SeedSessionManager = Pick<
   SessionManager,
@@ -134,44 +159,74 @@ type SeedSessionManager = Pick<
   | "appendCustomEntry"
 >;
 
-function normalizeThinkingLevel(value: string | null | undefined): ThinkingLevel | null {
-  return value === "off" || value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh"
+function normalizeThinkingLevel(
+  value: string | null | undefined,
+): ThinkingLevel | null {
+  return value === "off" ||
+    value === "minimal" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh"
     ? value
     : null;
 }
 
-function isAppendableAgentMessage(message: unknown): message is AppendableAgentMessage {
+function isAppendableAgentMessage(
+  message: unknown,
+): message is AppendableAgentMessage {
   if (!message || typeof message !== "object") return false;
   const role = (message as { role?: unknown }).role;
-  return role === "user"
-    || role === "assistant"
-    || role === "system"
-    || role === "tool"
-    || role === "bashExecution"
-    || role === "custom";
+  return (
+    role === "user" ||
+    role === "assistant" ||
+    role === "system" ||
+    role === "tool" ||
+    role === "bashExecution" ||
+    role === "custom"
+  );
 }
 
-function getStableForkSeed(sourceSession: AgentSession, stableLeafId: string | null): {
+function getStableForkSeed(
+  sourceSession: AgentSession,
+  stableLeafId: string | null,
+): {
   branchEntries: SeedBranchEntry[];
   model: { provider: string; modelId: string } | null;
   thinkingLevel: ThinkingLevel | null;
 } {
-  const branchEntries = stableLeafId === null
-    ? []
-    : (typeof sourceSession.sessionManager?.getBranch === "function"
+  const branchEntries =
+    stableLeafId === null
+      ? []
+      : typeof sourceSession.sessionManager?.getBranch === "function"
         ? sourceSession.sessionManager.getBranch(stableLeafId)
-        : []);
+        : [];
 
   let model: { provider: string; modelId: string } | null = null;
   let thinkingLevel: ThinkingLevel | null = null;
 
   for (const entry of branchEntries) {
-    if (entry?.type === "model_change" && typeof entry.provider === "string" && typeof entry.modelId === "string") {
+    if (
+      entry?.type === "model_change" &&
+      typeof entry.provider === "string" &&
+      typeof entry.modelId === "string"
+    ) {
       model = { provider: entry.provider, modelId: entry.modelId };
-    } else if (entry?.type === "thinking_level_change" && typeof entry.thinkingLevel === "string") {
+    } else if (
+      entry?.type === "thinking_level_change" &&
+      typeof entry.thinkingLevel === "string"
+    ) {
       thinkingLevel = normalizeThinkingLevel(entry.thinkingLevel);
-    } else if (entry?.type === "message" && entry.message?.role === "assistant" && typeof entry.message?.provider === "string" && typeof entry.message?.model === "string") {
-      model = { provider: entry.message.provider, modelId: entry.message.model };
+    } else if (
+      entry?.type === "message" &&
+      entry.message?.role === "assistant" &&
+      typeof entry.message?.provider === "string" &&
+      typeof entry.message?.model === "string"
+    ) {
+      model = {
+        provider: entry.message.provider,
+        modelId: entry.message.model,
+      };
     }
   }
 
@@ -181,14 +236,20 @@ function getStableForkSeed(sourceSession: AgentSession, stableLeafId: string | n
 function seedSessionManagerFromBranchEntries(
   sessionManager: SeedSessionManager,
   branchEntries: SeedBranchEntry[],
-  fallback: { sessionName?: string | null; model?: { provider: string; modelId: string } | null },
+  fallback: {
+    sessionName?: string | null;
+    model?: { provider: string; modelId: string } | null;
+  },
 ): void {
   if (!Array.isArray(branchEntries) || branchEntries.length === 0) {
     if (fallback.sessionName?.trim()) {
       sessionManager.appendSessionInfo(fallback.sessionName.trim());
     }
     if (fallback.model) {
-      sessionManager.appendModelChange(fallback.model.provider, fallback.model.modelId);
+      sessionManager.appendModelChange(
+        fallback.model.provider,
+        fallback.model.modelId,
+      );
     }
     return;
   }
@@ -198,20 +259,52 @@ function seedSessionManagerFromBranchEntries(
     let newId: string | null = null;
     if (entry?.type === "message" && isAppendableAgentMessage(entry.message)) {
       newId = sessionManager.appendMessage(entry.message);
-    } else if (entry?.type === "thinking_level_change" && typeof entry.thinkingLevel === "string") {
+    } else if (
+      entry?.type === "thinking_level_change" &&
+      typeof entry.thinkingLevel === "string"
+    ) {
       newId = sessionManager.appendThinkingLevelChange(entry.thinkingLevel);
-    } else if (entry?.type === "model_change" && typeof entry.provider === "string" && typeof entry.modelId === "string") {
+    } else if (
+      entry?.type === "model_change" &&
+      typeof entry.provider === "string" &&
+      typeof entry.modelId === "string"
+    ) {
       newId = sessionManager.appendModelChange(entry.provider, entry.modelId);
-    } else if (entry?.type === "compaction" && typeof entry.summary === "string") {
-      const firstKeptEntryId = sourceToNewId.get(entry.firstKeptEntryId)
-        ?? sourceToNewId.get(branchEntries[0]?.id ?? "")
-        ?? "rotated-context";
-      newId = sessionManager.appendCompaction(entry.summary, firstKeptEntryId, entry.tokensBefore ?? 0, entry.details, entry.fromHook);
-    } else if (entry?.type === "session_info" && typeof entry.name === "string" && entry.name.trim()) {
+    } else if (
+      entry?.type === "compaction" &&
+      typeof entry.summary === "string"
+    ) {
+      const firstKeptEntryId =
+        sourceToNewId.get(entry.firstKeptEntryId) ??
+        sourceToNewId.get(branchEntries[0]?.id ?? "") ??
+        "rotated-context";
+      newId = sessionManager.appendCompaction(
+        entry.summary,
+        firstKeptEntryId,
+        entry.tokensBefore ?? 0,
+        entry.details,
+        entry.fromHook,
+      );
+    } else if (
+      entry?.type === "session_info" &&
+      typeof entry.name === "string" &&
+      entry.name.trim()
+    ) {
       newId = sessionManager.appendSessionInfo(entry.name.trim());
-    } else if (entry?.type === "custom_message" && typeof entry.customType === "string") {
-      newId = sessionManager.appendCustomMessageEntry(entry.customType, entry.content, entry.display, entry.details);
-    } else if (entry?.type === "custom_entry" && typeof entry.customType === "string") {
+    } else if (
+      entry?.type === "custom_message" &&
+      typeof entry.customType === "string"
+    ) {
+      newId = sessionManager.appendCustomMessageEntry(
+        entry.customType,
+        entry.content,
+        entry.display,
+        entry.details,
+      );
+    } else if (
+      entry?.type === "custom_entry" &&
+      typeof entry.customType === "string"
+    ) {
       newId = sessionManager.appendCustomEntry(entry.customType, entry.data);
     }
 
@@ -222,7 +315,12 @@ function seedSessionManagerFromBranchEntries(
 }
 
 function isSessionActive(session: AgentSession): boolean {
-  return Boolean(session.isStreaming || session.isCompacting || session.isRetrying || session.isBashRunning);
+  return Boolean(
+    session.isStreaming ||
+    session.isCompacting ||
+    session.isRetrying ||
+    session.isBashRunning,
+  );
 }
 
 /**
@@ -231,15 +329,25 @@ function isSessionActive(session: AgentSession): boolean {
 export class AgentBranchManager {
   constructor(private readonly options: AgentBranchManagerOptions) {}
 
-  ensureBranchRegistration(chatJid: string, session?: AgentSession | null): ChatBranchRecord {
+  ensureBranchRegistration(
+    chatJid: string,
+    session?: AgentSession | null,
+  ): ChatBranchRecord {
     try {
       const existing = getChatBranchByChatJid(chatJid);
       if (existing) return existing;
       const created = ensureChatBranch({
         chat_jid: chatJid,
-        agent_name: deriveAgentHandle(chatJid, session?.sessionName?.trim() || null),
+        agent_name: deriveAgentHandle(
+          chatJid,
+          session?.sessionName?.trim() || null,
+        ),
       });
-      storeChatMetadata(chatJid, new Date().toISOString(), created.agent_name || chatJid);
+      storeChatMetadata(
+        chatJid,
+        new Date().toISOString(),
+        created.agent_name || chatJid,
+      );
       return created;
     } catch (err) {
       this.options.onWarn?.("Falling back to volatile branch record", {
@@ -255,9 +363,10 @@ export class AgentBranchManager {
     chatJid: string,
     options: { agentName?: string | null } = {},
   ): Promise<ChatBranchRecord> {
-    const session = this.options.pool.get(chatJid)?.runtime.session ?? null;
+    const session = this.options.pool.get(chatJid)?.runtime ?? null;
     this.ensureBranchRegistration(chatJid, session);
-    const nextAgentName = options.agentName !== undefined ? options.agentName : undefined;
+    const nextAgentName =
+      options.agentName !== undefined ? options.agentName : undefined;
     const renamed = renameChatBranchIdentity({
       chat_jid: chatJid,
       agent_name: nextAgentName,
@@ -279,7 +388,7 @@ export class AgentBranchManager {
   }
 
   async pruneChatBranch(chatJid: string): Promise<ChatBranchRecord> {
-    const session = this.options.pool.get(chatJid)?.runtime.session ?? null;
+    const session = this.options.pool.get(chatJid)?.runtime ?? null;
     const existing = this.ensureBranchRegistration(chatJid, session);
     if (existing.chat_jid === existing.root_chat_jid) {
       throw new Error("Cannot prune the root chat branch.");
@@ -326,7 +435,9 @@ export class AgentBranchManager {
   ): Promise<ChatBranchRecord> {
     const restored = restoreChatBranchIdentity({
       chat_jid: chatJid,
-      ...(options.agentName !== undefined ? { agent_name: options.agentName } : {}),
+      ...(options.agentName !== undefined
+        ? { agent_name: options.agentName }
+        : {}),
     });
 
     try {
@@ -346,21 +457,36 @@ export class AgentBranchManager {
     sourceChatJid: string,
     options: { agentName?: string | null } = {},
   ): Promise<ChatBranchRecord> {
-    const sourceSession = (await this.options.getOrCreateRuntime(sourceChatJid)).session;
+    const sourceSession = await this.options.getOrCreateRuntime(sourceChatJid);
     const sourceIsActive = isSessionActive(sourceSession);
-    const stableForkLeafId = this.options.activeForkBaseLeafByChat.has(sourceChatJid)
-      ? this.options.activeForkBaseLeafByChat.get(sourceChatJid) ?? null
+    const stableForkLeafId = this.options.activeForkBaseLeafByChat.has(
+      sourceChatJid,
+    )
+      ? (this.options.activeForkBaseLeafByChat.get(sourceChatJid) ?? null)
       : null;
-    if (sourceIsActive && !this.options.activeForkBaseLeafByChat.has(sourceChatJid)) {
-      throw new Error("Cannot fork this branch yet because no stable turn boundary is available.");
+    if (
+      sourceIsActive &&
+      !this.options.activeForkBaseLeafByChat.has(sourceChatJid)
+    ) {
+      throw new Error(
+        "Cannot fork this branch yet because no stable turn boundary is available.",
+      );
     }
 
-    const sourceBranch = this.ensureBranchRegistration(sourceChatJid, sourceSession);
+    const sourceBranch = this.ensureBranchRegistration(
+      sourceChatJid,
+      sourceSession,
+    );
     const nextChatJid = buildForkedChatJid(sourceChatJid);
-    const requestedAgentName = typeof options.agentName === "string" && options.agentName.trim()
-      ? options.agentName.trim()
-      : sourceBranch.agent_name;
-    storeChatMetadata(nextChatJid, new Date().toISOString(), requestedAgentName || nextChatJid);
+    const requestedAgentName =
+      typeof options.agentName === "string" && options.agentName.trim()
+        ? options.agentName.trim()
+        : sourceBranch.agent_name;
+    storeChatMetadata(
+      nextChatJid,
+      new Date().toISOString(),
+      requestedAgentName || nextChatJid,
+    );
     const nextBranch = ensureChatBranch({
       chat_jid: nextChatJid,
       root_chat_jid: sourceBranch.root_chat_jid || sourceBranch.chat_jid,
@@ -375,18 +501,28 @@ export class AgentBranchManager {
     const sourceContext = sourceSession.sessionManager.buildSessionContext();
     const parentSession = sourceSession.sessionFile?.trim() || undefined;
     const setupName = nextBranch.agent_name;
-    const sourceModel = stableSeed?.model || sourceContext.model || (sourceSession.model
-      ? { provider: sourceSession.model.provider, modelId: sourceSession.model.id }
-      : null);
+    const sourceModel =
+      stableSeed?.model ||
+      sourceContext.model ||
+      (sourceSession.model
+        ? {
+            provider: sourceSession.model.provider,
+            modelId: sourceSession.model.id,
+          }
+        : null);
 
     const result = await targetRuntime.newSession({
       ...(parentSession ? { parentSession } : {}),
       setup: async (sessionManager) => {
         if (stableSeed) {
-          seedSessionManagerFromBranchEntries(sessionManager, stableSeed.branchEntries, {
-            sessionName: setupName,
-            model: sourceModel,
-          });
+          seedSessionManagerFromBranchEntries(
+            sessionManager,
+            stableSeed.branchEntries,
+            {
+              sessionName: setupName,
+              model: sourceModel,
+            },
+          );
           return;
         }
         seedRotatedSession(sessionManager, sourceContext, {
@@ -395,12 +531,12 @@ export class AgentBranchManager {
         });
       },
     });
-    if (result.cancelled) {
+    if (!result) {
       throw new Error("Branch fork was cancelled.");
     }
 
     await this.options.refreshRuntime(nextChatJid, targetRuntime);
-    const activeTargetSession = targetRuntime.session;
+    const activeTargetSession = targetRuntime;
 
     if (sourceSession.model) {
       try {
@@ -415,7 +551,9 @@ export class AgentBranchManager {
     }
     try {
       const nextThinkingLevel = normalizeThinkingLevel(
-        stableSeed?.thinkingLevel || sourceContext.thinkingLevel || sourceSession.thinkingLevel,
+        stableSeed?.thinkingLevel ||
+          sourceContext.thinkingLevel ||
+          sourceSession.thinkingLevel,
       );
       if (nextThinkingLevel) {
         activeTargetSession.setThinkingLevel(nextThinkingLevel);
@@ -449,22 +587,26 @@ export class AgentBranchManager {
   listActiveChats(): ActiveChatAgent[] {
     const chats = [...this.options.pool.entries()]
       .flatMap(([chatJid, entry]): ActiveChatAgent[] => {
-        const session = entry.runtime.session;
+        const session = entry.runtime;
         const branch = this.ensureBranchRegistration(chatJid, session);
         if (branch.archived_at) return [];
-        return [{
-          branch_id: branch.branch_id,
-          chat_jid: chatJid,
-          root_chat_jid: branch.root_chat_jid,
-          parent_branch_id: branch.parent_branch_id,
-          agent_name: branch.agent_name,
-          archived_at: branch.archived_at ?? null,
-          session_id: session.sessionId,
-          session_name: session.sessionName?.trim() || null,
-          model: session.model ? `${session.model.provider}/${session.model.id}` : null,
-          is_active: isSessionActive(session),
-          has_side_session: this.options.sidePool.has(chatJid),
-        }];
+        return [
+          {
+            branch_id: branch.branch_id,
+            chat_jid: chatJid,
+            root_chat_jid: branch.root_chat_jid,
+            parent_branch_id: branch.parent_branch_id,
+            agent_name: branch.agent_name,
+            archived_at: branch.archived_at ?? null,
+            session_id: session.sessionId,
+            session_name: session.sessionName?.trim() || null,
+            model: session.model
+              ? `${session.model.provider}/${session.model.id}`
+              : null,
+            is_active: isSessionActive(session),
+            has_side_session: this.options.sidePool.has(chatJid),
+          },
+        ];
       })
       .sort((a, b) => {
         if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
@@ -474,11 +616,18 @@ export class AgentBranchManager {
     return chats;
   }
 
-  listKnownChats(rootChatJid?: string | null, options?: { includeArchived?: boolean }): ActiveChatAgent[] {
+  listKnownChats(
+    rootChatJid?: string | null,
+    options?: { includeArchived?: boolean },
+  ): ActiveChatAgent[] {
     const activeChats = this.listActiveChats();
-    const activeByChat = new Map(activeChats.map((chat) => [chat.chat_jid, chat]));
+    const activeByChat = new Map(
+      activeChats.map((chat) => [chat.chat_jid, chat]),
+    );
     try {
-      return listChatBranches(rootChatJid || null, { includeArchived: Boolean(options?.includeArchived) })
+      return listChatBranches(rootChatJid || null, {
+        includeArchived: Boolean(options?.includeArchived),
+      })
         .map((branch) => {
           const active = activeByChat.get(branch.chat_jid);
           return {
@@ -496,18 +645,24 @@ export class AgentBranchManager {
           } satisfies ActiveChatAgent;
         })
         .sort((a, b) => {
-          if (a.chat_jid === rootChatJid && b.chat_jid !== rootChatJid) return -1;
-          if (b.chat_jid === rootChatJid && a.chat_jid !== rootChatJid) return 1;
-          if (Boolean(a.archived_at) !== Boolean(b.archived_at)) return a.archived_at ? 1 : -1;
+          if (a.chat_jid === rootChatJid && b.chat_jid !== rootChatJid)
+            return -1;
+          if (b.chat_jid === rootChatJid && a.chat_jid !== rootChatJid)
+            return 1;
+          if (Boolean(a.archived_at) !== Boolean(b.archived_at))
+            return a.archived_at ? 1 : -1;
           if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
           return a.chat_jid.localeCompare(b.chat_jid);
         });
     } catch (err) {
-      this.options.onWarn?.("Failed to list known chats; falling back to active sessions only", {
-        operation: "list_known_chats",
-        rootChatJid: rootChatJid || null,
-        err,
-      });
+      this.options.onWarn?.(
+        "Failed to list known chats; falling back to active sessions only",
+        {
+          operation: "list_known_chats",
+          rootChatJid: rootChatJid || null,
+          err,
+        },
+      );
       return activeChats;
     }
   }
@@ -515,35 +670,54 @@ export class AgentBranchManager {
   findActiveChatByAgentName(agentName: string): ActiveChatAgent | null {
     const normalized = normalizeAgentHandlePart(agentName);
     if (!normalized) return null;
-    return this.listActiveChats().find((chat) => chat.agent_name === normalized) ?? null;
+    return (
+      this.listActiveChats().find((chat) => chat.agent_name === normalized) ??
+      null
+    );
   }
 
-  findChatByAgentName(agentName: string): { chat_jid: string; agent_name: string } | null {
+  findChatByAgentName(
+    agentName: string,
+  ): { chat_jid: string; agent_name: string } | null {
     const normalized = normalizeAgentHandlePart(agentName);
     if (!normalized) return null;
     try {
       const branch = getChatBranchByAgentName(normalized);
-      if (branch) return { chat_jid: branch.chat_jid, agent_name: branch.agent_name };
+      if (branch)
+        return { chat_jid: branch.chat_jid, agent_name: branch.agent_name };
     } catch (err) {
-      this.options.onWarn?.("Failed to look up agent handle; falling back to active sessions", {
-        operation: "find_chat_by_agent_name",
-        agentHandle: normalized,
-        err,
-      });
+      this.options.onWarn?.(
+        "Failed to look up agent handle; falling back to active sessions",
+        {
+          operation: "find_chat_by_agent_name",
+          agentHandle: normalized,
+          err,
+        },
+      );
     }
-    const active = this.listActiveChats().find((chat) => chat.agent_name === normalized) ?? null;
-    return active ? { chat_jid: active.chat_jid, agent_name: active.agent_name } : null;
+    const active =
+      this.listActiveChats().find((chat) => chat.agent_name === normalized) ??
+      null;
+    return active
+      ? { chat_jid: active.chat_jid, agent_name: active.agent_name }
+      : null;
   }
 
   getAgentHandleForChat(chatJid: string): string {
     try {
-      return getChatBranchByChatJid(chatJid)?.agent_name ?? deriveAgentHandle(chatJid);
+      return (
+        getChatBranchByChatJid(chatJid)?.agent_name ??
+        deriveAgentHandle(chatJid)
+      );
     } catch (err) {
-      this.options.onWarn?.("Failed to read stored handle; deriving one from chat id instead", {
-        operation: "get_agent_handle_for_chat",
-        chatJid,
-        err,
-      });
+      this.options.onWarn?.(
+        "Failed to read stored handle; deriving one from chat id instead",
+        {
+          operation: "get_agent_handle_for_chat",
+          chatJid,
+          err,
+        },
+      );
       return deriveAgentHandle(chatJid);
     }
   }

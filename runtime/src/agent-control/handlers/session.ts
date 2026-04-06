@@ -7,21 +7,36 @@
  * Consumers: agent-control-handlers.ts dispatches to these handlers.
  */
 
-import type { AgentSession, AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
-import type { AgentControlCommand, AgentControlResult } from "../agent-control-types.js";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import type {
+  AgentControlCommand,
+  AgentControlResult,
+} from "../agent-control-types.js";
 import { truncateText } from "../agent-control-helpers.js";
 import { rotateSession } from "../../session-rotation.js";
 
-type SessionNameCommand = Extract<AgentControlCommand, { type: "session_name" }>;
+type SessionNameCommand = Extract<
+  AgentControlCommand,
+  { type: "session_name" }
+>;
 type NewSessionCommand = Extract<AgentControlCommand, { type: "new_session" }>;
-type SwitchSessionCommand = Extract<AgentControlCommand, { type: "switch_session" }>;
-type SessionRotateCommand = Extract<AgentControlCommand, { type: "session_rotate" }>;
+type SwitchSessionCommand = Extract<
+  AgentControlCommand,
+  { type: "switch_session" }
+>;
+type SessionRotateCommand = Extract<
+  AgentControlCommand,
+  { type: "session_rotate" }
+>;
 type ForkCommand = Extract<AgentControlCommand, { type: "fork" }>;
 type ForksCommand = Extract<AgentControlCommand, { type: "forks" }>;
 type ExportHtmlCommand = Extract<AgentControlCommand, { type: "export_html" }>;
 
 /** Handle /session-name: rename the current session. */
-export async function handleSessionName(session: AgentSession, command: SessionNameCommand): Promise<AgentControlResult> {
+export async function handleSessionName(
+  session: AgentSession,
+  command: SessionNameCommand,
+): Promise<AgentControlResult> {
   if (!command.name) {
     return {
       status: "success",
@@ -39,28 +54,45 @@ export async function handleSessionName(session: AgentSession, command: SessionN
 }
 
 /** Handle /new-session: create a new session, optionally under a parent. */
-export async function handleNewSession(session: AgentSession, runtime: AgentSessionRuntime, command: NewSessionCommand): Promise<AgentControlResult> {
-  const result = await runtime.newSession(command.parent ? { parentSession: command.parent } : undefined);
-  if (result.cancelled) {
+export async function handleNewSession(
+  session: AgentSession,
+  runtime: AgentSession,
+  command: NewSessionCommand,
+): Promise<AgentControlResult> {
+  const result = await runtime.newSession(
+    command.parent ? { parentSession: command.parent } : undefined,
+  );
+  if (!result) {
     return { status: "error", message: "New session cancelled." };
   }
   return { status: "success", message: "Started a new session." };
 }
 
 /** Handle /switch-session: switch to an existing session by path. */
-export async function handleSwitchSession(session: AgentSession, runtime: AgentSessionRuntime, command: SwitchSessionCommand): Promise<AgentControlResult> {
+export async function handleSwitchSession(
+  session: AgentSession,
+  runtime: AgentSession,
+  command: SwitchSessionCommand,
+): Promise<AgentControlResult> {
   if (!command.path) {
     return { status: "error", message: "Usage: /switch-session <path>" };
   }
   const result = await runtime.switchSession(command.path.trim());
-  if (result.cancelled) {
+  if (!result) {
     return { status: "error", message: "Switch session cancelled." };
   }
-  return { status: "success", message: `Switched to session: ${command.path.trim()}.` };
+  return {
+    status: "success",
+    message: `Switched to session: ${command.path.trim()}.`,
+  };
 }
 
 /** Handle /session-rotate: archive the current session file and start a compact carried-forward successor. */
-export async function handleSessionRotate(session: AgentSession, runtime: AgentSessionRuntime, command: SessionRotateCommand): Promise<AgentControlResult> {
+export async function handleSessionRotate(
+  session: AgentSession,
+  runtime: AgentSession,
+  command: SessionRotateCommand,
+): Promise<AgentControlResult> {
   const result = await rotateSession(session, runtime, {
     instructions: command.instructions,
     reason: "manual",
@@ -72,7 +104,11 @@ export async function handleSessionRotate(session: AgentSession, runtime: AgentS
 }
 
 /** Handle /fork: fork the conversation from a specific entry. */
-export async function handleFork(session: AgentSession, runtime: AgentSessionRuntime, command: ForkCommand): Promise<AgentControlResult> {
+export async function handleFork(
+  session: AgentSession,
+  runtime: AgentSession,
+  command: ForkCommand,
+): Promise<AgentControlResult> {
   if (!command.entryId) {
     return { status: "error", message: "Usage: /fork <entryId>" };
   }
@@ -81,7 +117,9 @@ export async function handleFork(session: AgentSession, runtime: AgentSessionRun
     if (result.cancelled) {
       return { status: "error", message: "Fork cancelled." };
     }
-    const selected = result.selectedText ? `Selected text:\n${result.selectedText}` : "Fork created.";
+    const selected = result.selectedText
+      ? `Selected text:\n${result.selectedText}`
+      : "Fork created.";
     return { status: "success", message: selected };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -90,17 +128,31 @@ export async function handleFork(session: AgentSession, runtime: AgentSessionRun
 }
 
 /** Handle /fork: fork the conversation from a specific entry. */
-export async function handleForks(session: AgentSession, _command: ForksCommand): Promise<AgentControlResult> {
+export async function handleForks(
+  session: AgentSession,
+  _command: ForksCommand,
+): Promise<AgentControlResult> {
   const messages = session.getUserMessagesForForking();
   if (messages.length === 0) {
-    return { status: "success", message: "No user messages available for forking." };
+    return {
+      status: "success",
+      message: "No user messages available for forking.",
+    };
   }
-  const lines = ["Forkable messages:", ...messages.map((msg) => `• ${msg.entryId}: ${truncateText(msg.text, 120)}`)];
+  const lines = [
+    "Forkable messages:",
+    ...messages.map(
+      (msg) => `• ${msg.entryId}: ${truncateText(msg.text, 120)}`,
+    ),
+  ];
   return { status: "success", message: lines.join("\n") };
 }
 
 /** Handle /export-html: export the session as an HTML file. */
-export async function handleExportHtml(session: AgentSession, command: ExportHtmlCommand): Promise<AgentControlResult> {
+export async function handleExportHtml(
+  session: AgentSession,
+  command: ExportHtmlCommand,
+): Promise<AgentControlResult> {
   try {
     const outputPath = command.path?.trim() || undefined;
     const path = await session.exportToHtml(outputPath);

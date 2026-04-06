@@ -8,14 +8,14 @@
  * and `broadcastEvent()`).
  */
 
-import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
 
 import type { AgentPool } from "../../../agent-pool.js";
 import { bindWebUiSessionBinder } from "../agent/agent-pool-binder.js";
 import { SseHub } from "./sse-hub.js";
 import { UiBridge, type UiBridgeChannel } from "../theming/ui-bridge.js";
 
-type SessionBinder = (runtime: AgentSessionRuntime, chatJid: string) => Promise<void> | void;
+type SessionBinder = (runtime: AgentSession, chatJid: string) => Promise<void> | void;
 type SessionBinderInstaller = (agentPool: AgentPool, binder: SessionBinder) => void;
 
 interface WebSessionBroadcastServiceOpts {

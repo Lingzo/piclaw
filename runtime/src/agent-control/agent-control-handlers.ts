@@ -2,7 +2,7 @@
  * agent-control/agent-control-handlers.ts – Dispatch parsed commands to handlers.
  *
  * The applyControlCommand() function is the main dispatcher: it receives the
- * active AgentSessionRuntime plus a parsed AgentControlCommand and routes it to
+ * active AgentSession plus a parsed AgentControlCommand and routes it to
  * the appropriate handler function from handlers/*.ts based on the command type.
  *
  * Consumers:
@@ -11,7 +11,7 @@
  *   - channels/web/request-router-service.ts calls it for web commands.
  */
 
-import type { AgentSessionRuntime, ModelRegistry } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, ModelRegistry } from "@mariozechner/pi-coding-agent";
 import type { AgentControlCommand, AgentControlResult } from "./agent-control-types.js";
 import {
   handleAbort,
@@ -58,11 +58,11 @@ import { handleLabel, handleLabels, handleTree } from "./handlers/tree.js";
 
 /** Dispatch a parsed control command to the appropriate handler and return the result. */
 export async function applyControlCommand(
-  runtime: AgentSessionRuntime,
+  runtime: AgentSession,
   modelRegistry: ModelRegistry,
   command: AgentControlCommand
 ): Promise<AgentControlResult> {
-  const session = runtime.session;
+  const session = runtime;
   switch (command.type) {
     case "restart":
       return handleRestart(session, command);
