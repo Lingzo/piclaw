@@ -17,9 +17,12 @@ import { mkdirSync, existsSync, symlinkSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import {
-  type AgentSession,
-  createAgentSession,
-  DefaultResourceLoader,
+  type AgentSessionRuntime,
+  type CreateAgentSessionRuntimeFactory,
+  type ExtensionFactory,
+  createAgentSessionFromServices,
+  createAgentSessionRuntime,
+  createAgentSessionServices,
   getAgentDir,
   SessionManager,
   type AuthStorage,
@@ -29,13 +32,14 @@ import {
 
 import { SESSIONS_DIR, WORKSPACE_DIR } from "../core/config.js";
 import { builtinExtensionFactories } from "../extensions/index.js";
-import { installSameTurnToolActivationPatch } from "./tool-activation-compat.js";
-
-installSameTurnToolActivationPatch();
+import { bindImmediateToolActivation } from "./tool-activation-live-update.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-type AgentSessionCreateOptions = NonNullable<Parameters<typeof createAgentSession>[0]>;
+type AgentSessionCreateOptions = {
+  tools: NonNullable<NonNullable<Parameters<typeof createAgentSessionFromServices>[0]>["tools"]>;
+  extensionFactories?: ExtensionFactory[];
+};
 
 /**
  * Bundled extension paths that are loaded when their activation env vars
@@ -53,6 +57,10 @@ const OPTIONAL_EXTENSIONS: { path: string; envGate?: string }[] = [
   { path: resolve(EXTENSIONS_DIR, "integrations", "azure-openai.ts"), envGate: "AOAI_BASE_URL" },
   { path: resolve(EXTENSIONS_DIR, "integrations", "context-mode.ts") },
   { path: resolve(EXTENSIONS_DIR, "integrations", "bun-runner", "index.ts") },
+  { path: resolve(EXTENSIONS_DIR, "integrations", "keychain", "index.ts") },
+  { path: resolve(EXTENSIONS_DIR, "integrations", "ssh", "index.ts") },
+  { path: resolve(EXTENSIONS_DIR, "integrations", "proxmox", "index.ts") },
+  { path: resolve(EXTENSIONS_DIR, "integrations", "portainer", "index.ts") },
   { path: resolve(EXTENSIONS_DIR, "browser", "cdp-browser", "index.ts") },
   { path: resolve(EXTENSIONS_DIR, "platform", "windows", "powershell", "index.ts") },
   { path: resolve(EXTENSIONS_DIR, "platform", "windows", "win-ui", "index.ts") },
@@ -118,29 +126,42 @@ export async function createSessionInDir(
     modelRegistry: ModelRegistry;
     settingsManager: SettingsManager;
     tools: NonNullable<AgentSessionCreateOptions["tools"]>;
+    extensionFactories?: ExtensionFactory[];
   }
-): Promise<AgentSession> {
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: WORKSPACE_DIR,
-    agentDir: getAgentDir(),
-    settingsManager: options.settingsManager,
-    extensionFactories: builtinExtensionFactories,
-    additionalExtensionPaths: getBundledExtensionPaths(),
-  });
-  await resourceLoader.reload();
+): Promise<AgentSessionRuntime> {
+  const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
+    const services = await createAgentSessionServices({
+      cwd,
+      agentDir: getAgentDir(),
+      authStorage: options.authStorage,
+      modelRegistry: options.modelRegistry,
+      settingsManager: options.settingsManager,
+      resourceLoaderOptions: {
+        extensionFactories: [...builtinExtensionFactories, ...(options.extensionFactories ?? [])],
+        additionalExtensionPaths: getBundledExtensionPaths(),
+      },
+    });
 
-  const { session } = await createAgentSession({
+    return {
+      ...(await createAgentSessionFromServices({
+        services,
+        sessionManager,
+        sessionStartEvent,
+        tools: options.tools,
+      })),
+      services,
+      diagnostics: services.diagnostics,
+    };
+  };
+
+  const runtime = await createAgentSessionRuntime(createRuntime, {
     cwd: WORKSPACE_DIR,
     agentDir: getAgentDir(),
-    authStorage: options.authStorage,
-    modelRegistry: options.modelRegistry,
-    settingsManager: options.settingsManager,
-    resourceLoader,
     sessionManager: SessionManager.continueRecent(WORKSPACE_DIR, sessionDir),
-    tools: options.tools,
   });
 
-  return session;
+  bindImmediateToolActivation(runtime.session as any);
+  return runtime;
 }
 
 export async function createDefaultSession(
@@ -150,8 +171,9 @@ export async function createDefaultSession(
     modelRegistry: ModelRegistry;
     settingsManager: SettingsManager;
     tools: NonNullable<AgentSessionCreateOptions["tools"]>;
+    extensionFactories?: ExtensionFactory[];
   }
-): Promise<AgentSession> {
+): Promise<AgentSessionRuntime> {
   const chatSessionDir = ensureSessionDir(chatJid);
   return createSessionInDir(chatSessionDir, options);
 }

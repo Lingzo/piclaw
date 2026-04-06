@@ -11,13 +11,13 @@ Core tools (from `pi`):
 - `edit` — replace exact text
 - `write` — write files
 
-Piclaw keeps a small always-active baseline and lazily enables other tools on demand.
+Piclaw keeps a small always-active baseline and lazily enables other tools on demand. This is one of the main context-conservation strategies: keep default tool exposure small, promote only what the current turn needs, and prefer compact discovery surfaces before expanding into detailed schemas or examples.
 Default always-active set:
 
 - `read`
 - `edit`
 - `write`
-- `bash` on Linux/macOS, or `powershell` on Windows
+- `bash` on Linux/macOS, or `powershell` plus `bun_run` on Windows
 - `list_internal_tools`
 - `activate_tools`
 - `reset_active_tools`
@@ -46,7 +46,8 @@ You can extend that baseline with `.piclaw/config.json`:
   - `get` (lookup by `row_ids` with context)
   - `add` (insert a row, optionally attaching media)
   - `delete` (thread-cascade delete, optional `dry_run`, optional `force`)
-- `search_workspace` — full‑text search across notes + skills (FTS, with aggressive cleanup and size limits)
+- `search_workspace` — full‑text search across configured workspace FTS roots (notes + skills by default, with aggressive cleanup and size limits)
+- `refresh_workspace_index` — rebuild workspace FTS indexing for the configured roots
 - `get_model_state` — show current model, thinking level, and context usage
 - `list_models` — list available models/providers
 - `switch_model` — switch to a different model
@@ -63,12 +64,232 @@ You can extend that baseline with `.piclaw/config.json`:
 - `send_dashboard_widget` — post the built-in host-backed live dashboard widget to the web UI timeline
 - `exec_batch` — run multiple shell commands and return concise summaries for each
 - `powershell` — Windows-only replacement for the default shell tool; active instead of `bash` on Windows hosts
+- `bun_run` — run a workspace Bun script directly; kept in the default active baseline on Windows so there is still a first-party script runner alongside PowerShell
 - `exit_process` — gracefully terminate piclaw so Supervisor restarts it; kept always active because lifecycle control should not depend on same-turn lazy activation
+- `ssh` — get, set, or clear the session-scoped SSH profile used by remote-backed core tools (`read`, `write`, `edit`, `bash`)
+- `proxmox` — get, set, or clear the session-scoped Proxmox API profile, perform ad-hoc Proxmox API requests, or run common VM/task/metrics workflows with keychain-backed token auth
+- `portainer` — get, set, or clear the session-scoped Portainer API profile, perform ad-hoc Portainer API requests, or run common endpoint/stack/container workflows with keychain-backed token auth
 
 `messages` `search` accepts `query`, `chat_jid` (or `*`/`all`), `role`, `after`, `before`, `since`, `limit`, `offset`, and `details_max_chars` for controlling detail payloads.
 `messages` `get` accepts `row_ids`, optional `chat_jid`, `role`, `context_before`, `context_after`, and `details_max_chars`.
 `messages` `add` accepts `content`, optional `chat_jid`, `type` (`user` or `agent`), and `media_ids`.
 `messages` `delete` accepts `row_ids` and optional `chat_jid`, `force`, and `dry_run`.
+
+Infrastructure tools follow one shared pattern:
+- session-scoped profile actions: `get` / `set` / `clear`
+- low-context discovery: `discover`
+- compact introspection: `capabilities` / `workflow_help`
+- intent routing: `recommend`
+- raw escape hatch: `request`
+- curated orchestration: `workflow`
+
+That shared shape improves tool discoverability and keeps prompt usage down: the agent can ask what exists, narrow by family or intent, inspect just one workflow, and only then expand into concrete execution parameters.
+
+`ssh` uses the profile half of that model for remote-backed core tools. `proxmox` and `portainer` implement the full pattern.
+
+`ssh` accepts:
+- `action` — `get`, `set`, or `clear`
+- `chat_jid` — optional override; defaults to the current chat
+- `ssh_target` — `user@host` or `user@host:/remote/path`
+- `ssh_port` — optional port (default `22`)
+- `private_key_keychain` — keychain entry containing the private key
+- `known_hosts_keychain` — optional keychain entry containing `known_hosts`; empty string clears it
+- `strict_host_key_checking` — `yes`, `accept-new`, or `no`
+
+When a live session already exists, `ssh set` and `ssh clear` apply immediately to subsequent tool/model steps in the same turn.
+
+`proxmox` accepts:
+- `action` — `get`, `set`, `clear`, `discover`, `capabilities`, `workflow_help`, `recommend`, `request`, or `workflow`
+- `chat_jid` — optional override; defaults to the current chat
+- `base_url` — Proxmox API base URL (typically `https://host:8006/api2/json`); if omitted on `set`, the tool will try to discover a likely existing instance from env/keychain hints
+- `api_token_keychain` — keychain entry containing the Proxmox API token credentials; if omitted on `set`, the tool will try to discover a likely default token entry
+- `allow_insecure_tls` — allow self-signed/insecure TLS for requests (default `true`)
+- `method` — HTTP method for `action=request` (`GET`, `POST`, `PUT`, `DELETE`)
+- `path` — relative Proxmox API path for `action=request`
+- `query` — optional query-string parameters for `action=request`
+- `body` — optional request body for `action=request`
+- `body_mode` — `form` or `json` body encoding for `action=request`
+- `workflow` — named workflow for `action=workflow` or `action=workflow_help`
+- `category` — optional workflow family filter for `action=capabilities` or `action=recommend`
+- `include_workflows` — include detailed workflow entries for `action=capabilities`; defaults to `false` unless `category` is set
+- `include_examples` — include generated example payloads for `action=workflow_help`
+- `intent` — short goal description for `action=recommend`
+- `max_recommendations` — max items for `action=recommend` (default `3`)
+- `vmid` — VMID for VM/LXC workflows and provisioning flows
+- `node` — optional explicit node for VM/LXC/task/storage workflows; required for create/download flows
+- `storage` — storage name for storage/backup workflows and `metrics.storage`
+- `upid` — UPID for task workflows
+- `backup_volid` — backup volid/archive identifier for `backup.restore`
+- `storage_type` — storage backend type for `storage.create` (for example `dir`, `nfs`, `lvmthin`, `zfspool`)
+- `timeout_ms` / `poll_ms` — polling controls for workflow execution
+- `force` — stop-force option for workflows like `vm.stop` or `lxc.stop`
+- `target` — desired `{ status, qmpstatus }` for `vm.wait_state`
+- `timeframe` — metrics timeframe such as `hour`, `day`, or `week`
+- `cf` — metrics consolidation function such as `AVERAGE` or `MAX`
+- `metric` / `metrics` — retain only the requested metric keys from metrics workflow results
+- `snapshot_name` — snapshot name for `vm.snapshot.*`
+- `description` — optional description for snapshot/clone workflows
+- `name` / `hostname` — friendly guest names for `vm.create` / `lxc.create`
+- `memory` / `cores` / `sockets` — common create-workflow sizing fields
+- `ostype` / `net0` — common create-workflow convenience fields
+- `ostemplate` / `rootfs` / `password` / `ssh_public_keys` / `unprivileged` — common `lxc.create` inputs
+- `config` — advanced extra Proxmox form fields for create/storage workflows (for example `scsi0`, `path`, `content`, `features`)
+- `newid` / `new_name` — target VMID/name for `vm.clone`
+- `target_node` / `target_storage` — target placement hints for `vm.clone` and `vm.migrate`
+- `full` — full-clone option for `vm.clone`
+- `online` / `with_local_disks` — migration options for `vm.migrate`
+- `mode` / `compress` — backup options for `backup.create`
+- `slot` / `iso_volume` — VM cdrom slot and existing ISO volid for `vm.iso.attach` / `vm.iso.detach`
+- `disk` / `size` — disk identifier and target size for disk workflows such as `vm.disk.resize`
+- `download_url` / `filename` / `content` — inputs for `storage.download_url`
+- `checksum` / `checksum_algorithm` / `compression` / `verify_certificates` — optional integrity and transfer controls for `storage.download_url`
+- `command` / `command_args` / `input_data` — guest-agent exec inputs for `vm.agent.exec`
+- `limit` — result limit for list-style workflows like `task.list`
+- `lines` — line count for `node.log`
+
+Supported workflows today:
+- `cluster.status`
+- `vm.resolve_node`
+- `vm.status`
+- `vm.inspect`
+- `vm.create`
+- `vm.start`
+- `vm.stop`
+- `vm.resume`
+- `vm.restart`
+- `vm.ip`
+- `vm.migrate`
+- `vm.iso.attach`
+- `vm.iso.detach`
+- `vm.disk.resize`
+- `vm.disk.detach`
+- `vm.disk.remove`
+- `lxc.resolve_node`
+- `lxc.status`
+- `lxc.inspect`
+- `lxc.create`
+- `lxc.start`
+- `lxc.stop`
+- `lxc.restart`
+- `lxc.ip`
+- `node.list`
+- `node.inspect`
+- `node.log`
+- `node.reboot`
+- `node.shutdown`
+- `storage.list`
+- `storage.inspect`
+- `storage.content.list`
+- `storage.create`
+- `storage.download_url`
+- `backup.list`
+- `backup.create`
+- `backup.restore`
+- `task.list`
+- `task.status`
+- `task.log`
+- `task.wait`
+- `vm.wait_state`
+- `vm.snapshot.list`
+- `vm.snapshot.create`
+- `vm.snapshot.rollback`
+- `vm.snapshot.delete`
+- `vm.clone`
+- `vm.template.create`
+- `vm.agent.exec`
+- `vm.agent.osinfo`
+- `vm.agent.fsinfo`
+- `vm.agent.users`
+- `metrics.node`
+- `metrics.vm`
+- `metrics.storage`
+
+The `proxmox` tool deliberately keeps both a raw `request` path and a higher-level `workflow` path. `action=capabilities` is compact by default: it returns workflow-family summaries unless you set `category` and/or `include_workflows`. `action=recommend` gives a short intent-based workflow shortlist. `action=workflow_help` returns required/optional fields plus `recommended_for`, `see_also`, and `guidance`; set `include_examples=true` only when you want generated example payloads. This makes the tool both discoverable and context-efficient. A good default operator flow is: `discover` (optional) → `capabilities` or `recommend` → `workflow_help` → `workflow`, falling back to raw `request` only when the native workflow surface is too specialized or not yet modeled.
+
+`portainer` accepts:
+- `action` — `get`, `set`, `clear`, `discover`, `capabilities`, `workflow_help`, `recommend`, `request`, or `workflow`
+- `chat_jid` — optional override; defaults to the current chat
+- `base_url` — Portainer base URL (typically `https://host:9443`); if omitted on `set`, the tool will try to discover a likely existing instance from keychain/env hints
+- `api_token_keychain` — keychain entry containing the Portainer API token secret; if omitted on `set`, the tool will try to discover a likely default token entry
+- `allow_insecure_tls` — allow self-signed/insecure TLS for requests (default `true`)
+- `method` — HTTP method for `action=request` (`GET`, `POST`, `PUT`, `DELETE`)
+- `path` — relative Portainer API path for `action=request`
+- `query` — optional query-string parameters for `action=request`
+- `body` — optional request body for `action=request`
+- `body_mode` — `json` or `text` body encoding for `action=request`
+- `headers` — optional extra request headers for `action=request`
+- `workflow` — named workflow for `action=workflow` or `action=workflow_help`
+- `category` — optional workflow family filter for `action=capabilities` or `action=recommend`
+- `include_workflows` — include detailed workflow entries for `action=capabilities`; defaults to `false` unless `category` is set
+- `include_examples` — include generated example payloads for `action=workflow_help`
+- `intent` — short goal description for `action=recommend`
+- `max_recommendations` — max items for `action=recommend` (default `3`)
+- `endpoint_id` — endpoint ID for endpoint/stack/container/network workflows
+- `stack_id` — stack ID for stack workflows
+- `container_id` — container ID/prefix for container workflows
+- `network_id` — network ID/prefix for network workflows
+- `name` — generic lookup name for endpoint/container/network workflows, or a fallback image/volume name where applicable
+- `image` — image reference for image workflows
+- `volume_name` — volume name for `volume.inspect`
+- `stack_name` — stack name for stack workflows
+- `stack_file_content` — compose content for stack create/update workflows
+- `unmanaged` — only keep unmanaged containers for `container.list`
+- `force` — force deletion for `container.delete`, `container.upgrade` cleanup, or `image.delete`
+- `all_unused` — prune all unused images for `image.prune`, not just dangling ones
+- `tail` — tail line count for `container.logs`
+- `timestamps` — include timestamps for `container.logs`
+- `timeout_sec` — stop/restart timeout seconds for container workflows including `container.upgrade`
+- `command` / `command_args` — bounded exec inputs for `container.exec`
+- `driver` / `internal` / `attachable` / `enable_ipv6` / `labels` / `options` — network/volume creation inputs
+- `names` — container names for bulk workflows like `container.upgrade_many`
+
+Portainer follows the same discovery pattern as Proxmox: `discover` (optional) → `capabilities` or `recommend` → `workflow_help` → `workflow`, with raw `request` reserved for API areas that are still too broad or niche to model directly. The result is the same balance: high discoverability without forcing full workflow enumeration into every turn.
+
+Supported Portainer workflows today:
+- `endpoint.list`
+- `endpoint.resolve`
+- `endpoint.inspect`
+- `endpoint.ping`
+- `endpoint.docker_info`
+- `endpoint.docker_version`
+- `endpoint.system_df`
+- `stack.list`
+- `stack.resolve`
+- `stack.file`
+- `stack.create_standalone`
+- `stack.update`
+- `stack.pull_and_update`
+- `stack.delete`
+- `container.list`
+- `container.resolve`
+- `container.inspect`
+- `container.compose`
+- `container.start`
+- `container.stop`
+- `container.restart`
+- `container.logs`
+- `container.mounts`
+- `container.exec`
+- `container.upgrade`
+- `container.upgrade_many`
+- `container.delete`
+- `image.list`
+- `image.inspect`
+- `image.pull`
+- `image.delete`
+- `image.prune`
+- `image.update_check`
+- `network.list`
+- `network.inspect`
+- `network.create`
+- `network.delete`
+- `volume.list`
+- `volume.inspect`
+- `volume.create`
+- `volume.delete`
+- `volume.prune`
+
+The `portainer` tool follows the same contract as `proxmox`: chat-scoped profile actions, a raw `request` path for ad-hoc API calls, and a named `workflow` path for common operational flows. `action=capabilities` is compact by default: it returns workflow-family summaries unless you set `category` and/or `include_workflows`. `action=recommend` gives a short intent-based workflow shortlist. `action=workflow_help` returns required/optional fields plus `recommended_for`, `see_also`, and `guidance`; set `include_examples=true` only when you want generated example payloads. For standalone containers, `container.upgrade` now bakes in the expected base flow: pull the target image, recreate in place, and roll back if the replacement fails to start.
 
 `search_workspace` accepts:
 - `query` — FTS query text
@@ -115,20 +336,12 @@ Each skill keeps its script alongside its `SKILL.md` for portability. Current se
 | `situate-daily-notes` | Situation report and Obsidian-style daily summary notes |
 | `timeline-cleanup` | Delete low-value timeline messages by keyword patterns |
 | `proxmox-management` | Manage Proxmox VM lifecycle, USB mapping passthrough, and backup-restore moves |
+| `proxmox-guest-compare-chart` | Compare two Proxmox guests using native `proxmox` data collection and render SVG/CSV outputs |
+| `portainer-container-compare-chart` | Compare two Portainer containers using native `portainer` data collection and render SVG/CSV outputs |
 
 `kanban-management` intentionally keeps its public name for now, but repo-local board paths in this project now live under `workitems/`. Visual/editor semantics such as `*.kanban.md` remain intentionally named.
 
-The packaged Proxmox helper now lives at `runtime/scripts/proxmox.ts` and can be invoked from the repo with:
-
-```bash
-bun run proxmox -- vm status --vmid 117
-bun run proxmox -- vm inspect --vmid 117
-bun run proxmox -- vm start --vmid 117
-bun run proxmox -- vm stop --vmid 117
-bun run proxmox -- vm resume --vmid 117
-bun run proxmox -- vm restart --vmid 117
-bun run proxmox -- vm ip --vmid 117
-```
+For agent-driven work, prefer the native `proxmox` / `portainer` tools first. The old packaged Proxmox/Portainer helper CLIs were removed once the chat-scoped native tools and shared workflow engines became the canonical path. For shell-oriented Proxmox lifecycle work that still belongs in the skill layer, use the remaining `proxmox-management` skill wrappers instead. Comparison/chart skills for Proxmox and Portainer are now colocated with their packaged integration extensions and surfaced via each extension's `resources_discover` hook, rather than living only in the flat packaged-skill tree.
 
 ## Web extension UI note
 
@@ -191,6 +404,7 @@ Direct commands (no LLM round-trip):
 | `/btw <question>` | Open a side-conversation panel in the web UI and stream an answer without interrupting the main chat |
 | `/tasks [filter]` | List scheduled tasks (via extension) |
 | `/scheduled [filter]` | Alias for `/tasks` |
+| `/dream [days]` | Queue an out-of-band Dream cycle on a temporary `dream:` channel; runtime backs up notes, seeds daily notes from DB, the model follows Orient / Signal / Consolidate / Prune and Index, and runtime refreshes FTS at the end |
 
 > [!NOTE]
 > Provider auth works via `pi /login` in the terminal or the experimental `/login` card flow in the web UI.
@@ -219,6 +433,38 @@ Adaptive Card and side-conversation helpers are intentionally explicit web-facin
 Skills create tasks via IPC JSON files. Each task can optionally specify a `model` field (e.g. `anthropic/claude-sonnet-4-20250514`) to run on a cheaper or different model than the user's current one. The scheduler handles model switching and restoration automatically.
 
 Tasks are isolated from the user's conversation using the **session tree** — the scheduler saves the tree position before execution and navigates back afterwards. This prevents the task's prompt/response from appearing in the user's conversation context while still preserving it in a side branch for inspection via `/tree`. See [runtime-flows.md](runtime-flows.md) for the full flow.
+
+## Dream and AutoDream
+
+PiClaw has two memory-maintenance modes:
+
+- `Dream` — the manual `/dream [days]` command
+- `AutoDream` — the built-in nightly internal task
+
+Both are now **model-driven** and run as out-of-band agent turns on a temporary `dream:` channel.
+The temporary dream channel is cleaned up after the cycle ends.
+
+Dream/AutoDream follow the original 4-phase flow:
+- Orient — inspect startup memory and existing daily/memory state first
+- Signal — gather only narrow confirming evidence for suspected drift
+- Consolidate — merge, normalize dates, and correct contradictions at the source
+- Prune and Index — prune stale pointers, add references to newly important memories, shorten overly verbose `MEMORY.md` lines, and let runtime refresh FTS afterward
+
+Search behavior follows Claude-style rough criteria:
+- inspect existing daily/memory files first
+- inspect memories that drifted
+- use narrow `messages.search` queries only for things already suspected to matter
+- avoid exhaustive transcript sweeps
+
+AutoDream is gated and only runs when both are true:
+- at least 24 hours since the last consolidation
+- at least 6 sessions since the last consolidation
+
+Dream keeps the two note layers aligned:
+- `notes/daily/` — concise human-readable overview
+- `notes/memory/` — agent-facing durable memory and transcript-derived detail
+
+See also: [runtime/docs/dream-memory.md](../runtime/docs/dream-memory.md)
 
 Model names are validated at task creation time — invalid or ambiguous model identifiers are rejected before the task is persisted.
 

@@ -219,6 +219,63 @@ Without isolation, a scheduled task's prompt and response would appear in the ag
 - **Model safety**: The model is restored to its pre-task state on the correct branch.
 - **No session forking**: Unlike `fork()` which creates a new session file, `navigateTree()` stays in the same file and simply moves the branch pointer.
 
+## Session-scoped SSH remote tools
+
+A chat can optionally switch its core file/shell tools to a remote host over SSH.
+
+- Control surface: agent-only `ssh` tool
+- Scope: one chat JID at a time
+- Persistence: SQLite `ssh_configs`
+- Affected tools: `read`, `write`, `edit`, `bash`
+
+The important runtime property is that SSH mode is **live mutable**. If a warm session already exists, `ssh set` and `ssh clear` can flip the backend immediately for the next tool/model step without rebuilding the whole session.
+
+```mermaid
+sequenceDiagram
+  participant Agent
+  participant ssh as ssh tool
+  participant Pool as AgentPool
+  participant DB as SQLite
+  participant Core as ssh-core wrappers
+  participant Host as Local or Remote host
+
+  Agent->>ssh: action=set target+keychain
+  ssh->>Pool: setSshConfig(chatJid, config)
+  Pool->>DB: upsert ssh_configs
+  Pool->>Core: applyLiveSshConfig(chatJid)
+  Core-->>Host: next read/write/edit/bash uses SSH
+
+  Agent->>ssh: action=clear
+  ssh->>Pool: clearSshConfig(chatJid)
+  Pool->>DB: delete ssh_configs row
+  Pool->>Core: clearLiveSshConfig(chatJid)
+  Core-->>Host: next core tool call runs locally
+```
+
+Transport semantics match the packaged SSH extension model:
+
+- multiplexed connection reuse
+- `ControlMaster=auto`
+- `ControlPersist=600`
+- persistent remote shell state
+- configured remote cwd/home mapping
+
+## Context conservation and tool discoverability
+
+Several runtime choices are intentionally optimized for low-context turns and progressive discovery:
+
+- small always-active tool baseline, with explicit same-turn tool activation for everything else
+- session-scoped infra profiles so SSH / Proxmox / Portainer state can be reused without restating connection details every turn
+- compact `capabilities` output and short `recommend` results before full workflow details
+- opt-in examples in `workflow_help` instead of returning bulky example payloads by default
+- warm session reuse so model state and scoped tool state stay available without repeated setup
+
+For infrastructure work, the preferred discovery path is:
+
+`discover` → `capabilities` or `recommend` → `workflow_help` → `workflow`
+
+Only fall back to raw `request` when the curated workflow surface is not the right fit.
+
 ## Session lifecycle (summary)
 
 - Messages for a chat JID share a warm `AgentSession`.

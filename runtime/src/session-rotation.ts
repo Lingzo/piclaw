@@ -6,7 +6,7 @@
  */
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { AgentSession, SessionContext, SessionManager } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionRuntime, SessionContext, SessionManager } from "@mariozechner/pi-coding-agent";
 import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, extname, join } from "path";
 import { formatBytes } from "./agent-control/agent-control-helpers.js";
@@ -148,6 +148,7 @@ export function seedRotatedSession(
 /** Rotate a persisted session into a newly-seeded successor session file. */
 export async function rotateSession(
   session: AgentSession,
+  runtime: AgentSessionRuntime,
   options: { instructions?: string; reason?: SessionRotationReason } = {}
 ): Promise<SessionRotationResult> {
   const reason = options.reason ?? "manual";
@@ -214,7 +215,7 @@ export async function rotateSession(
     copyFileSync(previousSessionFile, archivePath);
     archived = true;
 
-    const ok = await session.newSession({
+    const result = await runtime.newSession({
       parentSession: archivePath,
       setup: async (sessionManager) => {
         seedRotatedSession(sessionManager, context, {
@@ -224,16 +225,17 @@ export async function rotateSession(
       },
     });
 
-    if (!ok) {
+    if (result.cancelled) {
       if (archived) rmSync(archivePath, { force: true });
       return { status: "error", reason, compacted, message: "Session rotation cancelled." };
     }
 
-    forcePersistSessionFile(session);
+    const activeSession = runtime.session;
+    forcePersistSessionFile(activeSession);
     rmSync(previousSessionFile, { force: true });
 
-    const nextSessionFile = session.sessionFile || "(unavailable)";
-    const nextSize = getSessionFileSize(session.sessionFile);
+    const nextSessionFile = activeSession.sessionFile || "(unavailable)";
+    const nextSize = getSessionFileSize(activeSession.sessionFile);
     const summaryCount = collectCarriedSummary(context.messages).summary ? 1 : 0;
     const carriedMessageCount = context.messages.filter(
       (message) => message.role !== "compactionSummary" && message.role !== "branchSummary"

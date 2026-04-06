@@ -1,10 +1,28 @@
 import { expect, test } from "bun:test";
 
+import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import { AgentSessionManager } from "../../src/agent-pool/session-manager.js";
 
+function createRuntime(session: any): AgentSessionRuntime {
+  return {
+    session,
+    cwd: "/workspace",
+    diagnostics: [],
+    services: {} as any,
+    modelFallbackMessage: undefined,
+    newSession: async () => ({ cancelled: false }),
+    switchSession: async () => ({ cancelled: false }),
+    fork: async () => ({ cancelled: false }),
+    importFromJsonl: async () => ({ cancelled: false }),
+    dispose: async () => {
+      session.dispose?.();
+    },
+  } as any;
+}
+
 function createManager(overrides: Record<string, unknown> = {}) {
-  const pool = new Map<string, { session: any; lastUsed: number }>();
-  const sidePool = new Map<string, { session: any; lastUsed: number }>();
+  const pool = new Map<string, { runtime: any; lastUsed: number }>();
+  const sidePool = new Map<string, { runtime: any; lastUsed: number }>();
   const state = {
     bound: [] as string[],
     registered: [] as string[],
@@ -23,7 +41,7 @@ function createManager(overrides: Record<string, unknown> = {}) {
       getDefaultModel: () => null,
     } as any,
     createDefaultTools: () => [] as any,
-    bindSession: async (_session, chatJid) => {
+    bindSession: async (_runtime, chatJid) => {
       state.bound.push(chatJid);
     },
     ensureBranchRegistration: (chatJid) => {
@@ -46,19 +64,49 @@ test("AgentSessionManager creates, caches, and binds main sessions", async () =>
   const fixture = createManager({
     createSession: async () => {
       createCalls += 1;
-      return session as any;
+      return createRuntime(session) as any;
     },
   });
 
   const first = await fixture.manager.getOrCreate("web:default");
   const second = await fixture.manager.getOrCreate("web:default");
 
-  expect(first).toBe(session);
-  expect(second).toBe(session);
+  expect(first.session).toBe(session);
+  expect(second.session).toBe(session);
   expect(createCalls).toBe(1);
   expect(fixture.state.bound).toEqual(["web:default"]);
   expect(fixture.state.registered).toEqual(["web:default"]);
-  expect(fixture.pool.get("web:default")?.session).toBe(session);
+  expect(fixture.pool.get("web:default")?.runtime.session).toBe(session);
+});
+
+test("AgentSessionManager recreates cached main and side sessions", async () => {
+  let disposed = 0;
+  const mainSession = {
+    isStreaming: false,
+    isBashRunning: false,
+    isCompacting: false,
+    dispose() {
+      disposed += 1;
+    },
+  };
+  const sideSession = {
+    isStreaming: false,
+    isBashRunning: false,
+    isCompacting: false,
+    dispose() {
+      disposed += 1;
+    },
+  };
+
+  const fixture = createManager();
+  fixture.pool.set("web:default", { runtime: createRuntime(mainSession), lastUsed: Date.now() });
+  fixture.sidePool.set("web:default", { runtime: createRuntime(sideSession), lastUsed: Date.now() });
+
+  await fixture.manager.recreate("web:default");
+
+  expect(fixture.pool.has("web:default")).toBe(false);
+  expect(fixture.sidePool.has("web:default")).toBe(false);
+  expect(disposed).toBe(2);
 });
 
 test("AgentSessionManager evicts idle sessions and shuts down remaining sessions", async () => {
@@ -81,8 +129,8 @@ test("AgentSessionManager evicts idle sessions and shuts down remaining sessions
   };
 
   const fixture = createManager();
-  fixture.pool.set("web:old", { session: oldSession as any, lastUsed: Date.now() - 10_000 });
-  fixture.pool.set("web:active", { session: activeSession as any, lastUsed: Date.now() - 10_000 });
+  fixture.pool.set("web:old", { runtime: createRuntime(oldSession), lastUsed: Date.now() - 10_000 });
+  fixture.pool.set("web:active", { runtime: createRuntime(activeSession), lastUsed: Date.now() - 10_000 });
 
   fixture.manager.evictIdle(1_000);
 

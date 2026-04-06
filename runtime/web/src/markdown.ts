@@ -358,21 +358,21 @@ function extractRestorableAttributes(tagName, rawAttrs) {
 }
 
 function restoreAllowedHtmlTags(text) {
-  if (!text) return text;
-  return text.replace(/&lt;([\s\S]*?)&gt;/g, (match, content) => {
-    const trimmed = content.trim();
-    const isClosing = trimmed.startsWith("/");
-    const rawTag = isClosing ? trimmed.slice(1).trim() : trimmed;
-    const isSelfClosing = rawTag.endsWith("/");
-    const tagContent = isSelfClosing ? rawTag.slice(0, -1).trim() : rawTag;
-    const [tagToken = ""] = tagContent.split(/\s+/, 1);
-    const tagName = tagToken.toLowerCase();
-    if (!tagName || !ALLOWED_HTML_TAGS.has(tagName)) return match;
-    // Void tag: never emit a closing </br>
-    if (tagName === "br") {
-      return isClosing ? "" : "<br>";
-    }
-    if (isClosing) return `</${tagName}>`;
+    if (!text) return text;
+    return text.replace(/&lt;((?:[^"'<>]|"[^"]*"|'[^']*')*?)(?:&gt;|>)/g, (match, content) => {
+        const trimmed = content.trim();
+        const isClosing = trimmed.startsWith('/');
+        const rawTag = isClosing ? trimmed.slice(1).trim() : trimmed;
+        const isSelfClosing = rawTag.endsWith('/');
+        const tagContent = isSelfClosing ? rawTag.slice(0, -1).trim() : rawTag;
+        const [tagToken = ''] = tagContent.split(/\s+/, 1);
+        const tagName = tagToken.toLowerCase();
+        if (!tagName || !ALLOWED_HTML_TAGS.has(tagName)) return match;
+        // Void tag: never emit a closing </br>
+        if (tagName === 'br') {
+            return isClosing ? '' : '<br>';
+        }
+        if (isClosing) return `</${tagName}>`;
 
     const attrSource = tagContent.slice(tagToken.length).trim();
     const attrs = extractRestorableAttributes(tagName, attrSource);

@@ -25,6 +25,7 @@ import { mkdirSync } from "fs";
 import { join } from "path";
 import {
   type AgentSession,
+  type AgentSessionRuntime,
   AuthStorage,
   ModelRegistry,
   SettingsManager,
@@ -47,7 +48,34 @@ import { runAgentPrompt } from "./agent-pool/run-agent-orchestrator.js";
 import { type AvailableModelsResult } from "./agent-pool/runtime-facade.js";
 import { createAgentPoolServices, type AgentPoolServices } from "./agent-pool/service-factory.js";
 import { type PoolEntry } from "./agent-pool/session-manager.js";
-import { type ChatBranchRecord } from "./db.js";
+import {
+  type ChatBranchRecord,
+  type SshConfig,
+  type SshConfigApplyTiming,
+  type SshConfigClearResult,
+  type SshConfigSetResult,
+  deleteSshConfig,
+  getSshConfig,
+  upsertSshConfig,
+} from "./db.js";
+import { setSshToolHandlers } from "./extensions/ssh.js";
+import { setProxmoxToolHandlers } from "./extensions/proxmox.js";
+import { setPortainerToolHandlers } from "./extensions/portainer.js";
+import {
+  clearStoredProxmoxConfig,
+  getStoredProxmoxConfig,
+  requestStoredProxmoxApi,
+  runStoredProxmoxWorkflow,
+  setStoredProxmoxConfig,
+} from "./proxmox/handlers.js";
+import {
+  clearStoredPortainerConfig,
+  getStoredPortainerConfig,
+  requestStoredPortainerApi,
+  runStoredPortainerWorkflow,
+  setStoredPortainerConfig,
+} from "./portainer/handlers.js";
+import { applyLiveSshConfig, clearLiveSshConfig, hasLiveChatSshSession, resolveSshCoreConfigFromChatConfig } from "./extensions/ssh-core.js";
 import { createLogger } from "./utils/logger.js";
 
 const log = createLogger("agent-pool");
@@ -62,8 +90,16 @@ export type {
 } from "./agent-pool/contracts.js";
 
 /** How long (ms) an idle session stays cached before being disposed. */
-const IDLE_TTL = 10 * 60 * 1000; // 10 minutes
-const CLEANUP_INTERVAL = 60 * 1000; // check every minute
+const DEFAULT_IDLE_TTL = 2 * 60 * 1000; // 2 minutes
+const DEFAULT_CLEANUP_INTERVAL = 30 * 1000; // check every 30 seconds
+
+function parsePositiveMs(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(String(value || "").trim(), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const IDLE_TTL = parsePositiveMs(process.env.PICLAW_SESSION_IDLE_TTL_MS, DEFAULT_IDLE_TTL);
+const CLEANUP_INTERVAL = parsePositiveMs(process.env.PICLAW_SESSION_CLEANUP_INTERVAL_MS, DEFAULT_CLEANUP_INTERVAL);
 
 /**
  * Manages a pool of persistent AgentSession instances keyed by chat JID.
@@ -124,19 +160,38 @@ export class AgentPool {
       onError: (message, details) => log.error(message, details),
     }));
     this.sideStreamSimple = options.sideStreamSimple;
+    setSshToolHandlers({
+      get: (chatJid) => this.getSshConfig(chatJid),
+      set: (chatJid, config) => this.setSshConfig(chatJid, config),
+      clear: (chatJid) => this.clearSshConfig(chatJid),
+    });
+    setProxmoxToolHandlers({
+      get: (chatJid) => getStoredProxmoxConfig(chatJid),
+      set: (chatJid, config) => setStoredProxmoxConfig(chatJid, config),
+      clear: (chatJid) => clearStoredProxmoxConfig(chatJid),
+      request: (chatJid, input) => requestStoredProxmoxApi(chatJid, input),
+      workflow: (chatJid, input) => runStoredProxmoxWorkflow(chatJid, input),
+    });
+    setPortainerToolHandlers({
+      get: (chatJid) => getStoredPortainerConfig(chatJid),
+      set: (chatJid, config) => setStoredPortainerConfig(chatJid, config),
+      clear: (chatJid) => clearStoredPortainerConfig(chatJid),
+      request: (chatJid, input) => requestStoredPortainerApi(chatJid, input),
+      workflow: (chatJid, input) => runStoredPortainerWorkflow(chatJid, input),
+    });
     mkdirSync(SESSIONS_DIR, { recursive: true });
     mkdirSync(this.logsDir, { recursive: true });
     this.cleanupTimer = setInterval(() => this.sessionManager.evictIdle(IDLE_TTL), CLEANUP_INTERVAL);
   }
 
-  setSessionBinder(binder?: (session: AgentSession, chatJid: string) => Promise<void> | void): void {
+  setSessionBinder(binder?: (runtime: AgentSessionRuntime, chatJid: string) => Promise<void> | void): void {
     this.sessionBinder.setBinder(binder);
   }
 
   /** Run a prompt against the persistent session for `chatJid`. */
   async runAgent(prompt: string, chatJid: string, options: RunAgentOptions = {}): Promise<AgentOutput> {
     return runAgentPrompt(prompt, chatJid, options, {
-      getOrCreate: (nextChatJid) => this.getOrCreate(nextChatJid),
+      getOrCreateRuntime: (nextChatJid) => this.getOrCreateRuntime(nextChatJid),
       turnCoordinator: this.turnCoordinator,
       clearAttachments: (nextChatJid) => this.attachments.clear(nextChatJid),
       takeAttachments: (nextChatJid) => this.attachments.take(nextChatJid),
@@ -162,8 +217,8 @@ export class AgentPool {
   async runSidePrompt(chatJid: string, prompt: string, options: SidePromptOptions = {}): Promise<SidePromptResult> {
     return runSidePromptInternal(chatJid, prompt, options, {
       getOrCreate: (nextChatJid) => this.getOrCreate(nextChatJid),
-      getOrCreateSide: (nextChatJid) => this.getOrCreateSide(nextChatJid),
-      syncSideSessionFromMain: (mainSession, sideSession) => this.syncSideSessionFromMain(mainSession, sideSession),
+      getOrCreateSideRuntime: (nextChatJid) => this.getOrCreateSideRuntime(nextChatJid),
+      syncSideSessionFromMain: (mainSession, sideRuntime) => this.syncSideSessionFromMain(mainSession, sideRuntime),
       modelRegistry: this.modelRegistry,
       sideStreamSimple: this.sideStreamSimple,
       onWarn: (message, details) => log.warn(message, details),
@@ -198,6 +253,10 @@ export class AgentPool {
    */
   async restoreSessionPosition(chatJid: string, leafId: string | null): Promise<void> {
     return this.runtimeFacade.restoreSessionPosition(chatJid, leafId);
+  }
+
+  async disposeChatSession(chatJid: string): Promise<void> {
+    await this.sessionManager.recreate(chatJid);
   }
 
   hasProviderModels(provider: string): boolean {
@@ -293,6 +352,31 @@ export class AgentPool {
     return this.runtimeFacade.applySlashCommand(chatJid, rawText);
   }
 
+  getSshConfig(chatJid: string): SshConfig | null {
+    return getSshConfig(chatJid);
+  }
+
+  async setSshConfig(
+    chatJid: string,
+    config: Omit<SshConfig, "chat_jid" | "created_at" | "updated_at">,
+  ): Promise<SshConfigSetResult> {
+    const apply_timing: SshConfigApplyTiming = hasLiveChatSshSession(chatJid) ? "immediate" : "next_session";
+    if (apply_timing === "immediate") {
+      await applyLiveSshConfig(chatJid, resolveSshCoreConfigFromChatConfig(config));
+    }
+    const next = upsertSshConfig({ chat_jid: chatJid, ...config });
+    return { config: next, apply_timing };
+  }
+
+  async clearSshConfig(chatJid: string): Promise<SshConfigClearResult> {
+    const apply_timing: SshConfigApplyTiming = hasLiveChatSshSession(chatJid) ? "immediate" : "next_session";
+    const deleted = deleteSshConfig(chatJid);
+    if (apply_timing === "immediate") {
+      await clearLiveSshConfig(chatJid);
+    }
+    return { deleted, apply_timing };
+  }
+
   /** Gracefully shut down all sessions. */
   async shutdown(): Promise<void> {
     if (this.cleanupTimer) {
@@ -304,16 +388,20 @@ export class AgentPool {
 
   // ── internal ────────────────────────────────────────────
 
-  private async getOrCreate(chatJid: string): Promise<AgentSession> {
+  private async getOrCreateRuntime(chatJid: string): Promise<AgentSessionRuntime> {
     return this.sessionManager.getOrCreate(chatJid);
   }
 
-  private async getOrCreateSide(chatJid: string): Promise<AgentSession> {
+  private async getOrCreate(chatJid: string): Promise<AgentSession> {
+    return (await this.getOrCreateRuntime(chatJid)).session;
+  }
+
+  private async getOrCreateSideRuntime(chatJid: string): Promise<AgentSessionRuntime> {
     return this.sessionManager.getOrCreateSide(chatJid);
   }
 
-  private async syncSideSessionFromMain(mainSession: AgentSession, sideSession: AgentSession): Promise<void> {
-    return this.sessionManager.syncSideSessionFromMain(mainSession, sideSession);
+  private async syncSideSessionFromMain(mainSession: AgentSession, sideRuntime: AgentSessionRuntime): Promise<void> {
+    return this.sessionManager.syncSideSessionFromMain(mainSession, sideRuntime);
   }
 
   private evictIdle(): void {

@@ -1,3 +1,4 @@
+import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import { mkdirSync, writeFileSync, rmSync, readdirSync } from "fs";
 import { dirname, join } from "path";
 
@@ -31,6 +32,27 @@ export function createTestModelRegistry(models: any[] = [DEFAULT_TEST_MODEL], au
   } as any;
 }
 
+export function createTestSessionRuntime(session: TestAgentControlSession): AgentSessionRuntime {
+  return {
+    session: session as any,
+    cwd: session.rootDir,
+    diagnostics: [],
+    services: {} as any,
+    modelFallbackMessage: undefined,
+    newSession: async (options?: { parentSession?: string; setup?: (sessionManager: any) => Promise<void> | void }) => ({
+      cancelled: !(await session.newSession(options)),
+    }),
+    switchSession: async (path: string) => ({
+      cancelled: !(await session.switchSession(path)),
+    }),
+    fork: async (entryId: string) => session.fork(entryId),
+    importFromJsonl: async () => ({ cancelled: false }),
+    dispose: async () => {
+      session.dispose();
+    },
+  } as any;
+}
+
 export class TestAgentControlSession {
   model: any = DEFAULT_TEST_MODEL;
   thinkingLevel = "low" as const;
@@ -49,6 +71,7 @@ export class TestAgentControlSession {
   abortCalls = 0;
   abortRetryCalls = 0;
   abortBashCalls = 0;
+  abortCompactionCalls = 0;
   reloadCalls = 0;
   compactCalls = 0;
   compactError: Error | null = null;
@@ -64,7 +87,7 @@ export class TestAgentControlSession {
   resourceLoader: any;
   modelRegistry: any;
 
-  constructor(private rootDir: string, modelRegistry: any = createTestModelRegistry()) {
+  constructor(readonly rootDir: string, modelRegistry: any = createTestModelRegistry()) {
     this.modelRegistry = modelRegistry;
     this.sessionFile = join(rootDir, "data", "sessions", "web_default", "state-session.jsonl");
     mkdirSync(dirname(this.sessionFile), { recursive: true });
@@ -175,6 +198,10 @@ export class TestAgentControlSession {
 
   abortBash() {
     this.abortBashCalls += 1;
+  }
+
+  abortCompaction() {
+    this.abortCompactionCalls += 1;
   }
 
   cycleModel() {

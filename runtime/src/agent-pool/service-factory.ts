@@ -2,9 +2,11 @@
  * agent-pool/service-factory.ts – Constructor wiring for AgentPool helper services.
  */
 
-import type { AuthStorage, ModelRegistry, SettingsManager } from "@mariozechner/pi-coding-agent";
+import type { AuthStorage, ExtensionFactory, ModelRegistry, SettingsManager } from "@mariozechner/pi-coding-agent";
 
 import { getAttachmentRegistry } from "./attachments.js";
+import { getSshConfig } from "../db.js";
+import { createChatSshCoreExtension, resolveSshCoreConfigFromChatConfig } from "../extensions/ssh-core.js";
 import { AgentBranchManager } from "./branch-manager.js";
 import { AgentRuntimeFacade } from "./runtime-facade.js";
 import { AgentSessionBinder } from "./session-binder.js";
@@ -47,6 +49,21 @@ export interface AgentPoolServices {
   branchManager: AgentBranchManager;
 }
 
+async function resolveSessionExtensionFactories(chatJid: string): Promise<ExtensionFactory[]> {
+  let sshConfig: ReturnType<typeof getSshConfig> | undefined;
+  try {
+    sshConfig = getSshConfig(chatJid);
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      (error.message !== "Database not initialized" && error.message !== "Cannot use a closed database")
+    ) {
+      throw error;
+    }
+  }
+  return [createChatSshCoreExtension(chatJid, sshConfig ? resolveSshCoreConfigFromChatConfig(sshConfig) : null)];
+}
+
 /**
  * Assemble the extracted helper services used by AgentPool.
  * Keeps constructor wiring in one place so AgentPool itself remains a thin façade.
@@ -75,10 +92,11 @@ export function createAgentPoolServices(options: AgentPoolServiceFactoryOptions)
   let sessionManager: AgentSessionManager;
   const runtimeFacade = new AgentRuntimeFacade({
     pool: options.pool,
-    getOrCreate: (chatJid) => sessionManager.getOrCreate(chatJid),
+    getOrCreateRuntime: (chatJid) => sessionManager.getOrCreate(chatJid),
     modelRegistry: options.modelRegistry,
     authStorage: options.authStorage,
     clearAttachments: (chatJid) => attachments.clear(chatJid),
+    refreshRuntime: (chatJid, runtime) => sessionManager.refreshRuntime(chatJid, runtime),
     onWarn: options.onWarn,
     onError: options.onError,
   });
@@ -86,7 +104,8 @@ export function createAgentPoolServices(options: AgentPoolServiceFactoryOptions)
     pool: options.pool,
     sidePool: options.sidePool,
     activeForkBaseLeafByChat: options.activeForkBaseLeafByChat,
-    getOrCreate: (chatJid) => sessionManager.getOrCreate(chatJid),
+    getOrCreateRuntime: (chatJid) => sessionManager.getOrCreate(chatJid),
+    refreshRuntime: (chatJid, runtime) => sessionManager.refreshRuntime(chatJid, runtime),
     isActive: (chatJid) => runtimeFacade.isActive(chatJid),
     onWarn: options.onWarn,
   });
@@ -99,7 +118,8 @@ export function createAgentPoolServices(options: AgentPoolServiceFactoryOptions)
     modelRegistry: options.modelRegistry,
     settingsManager: options.settingsManager,
     createDefaultTools: () => toolFactory.createDefaultTools(),
-    bindSession: (session, chatJid) => sessionBinder.bindSession(session, chatJid),
+    getSessionExtensionFactories: (chatJid) => resolveSessionExtensionFactories(chatJid),
+    bindSession: (runtime, chatJid) => sessionBinder.bindSession(runtime, chatJid),
     ensureBranchRegistration: (chatJid, session) => {
       branchManager.ensureBranchRegistration(chatJid, session);
     },

@@ -55,6 +55,11 @@ export const TOOLSETS: ToolsetDefinition[] = [
     toolNames: ["schedule_task", "bun_run", "exec_batch", "search_tool_output"],
   },
   {
+    name: "remote",
+    description: "Remote execution configuration and remote-capable infrastructure tools.",
+    toolNames: ["ssh", "proxmox", "portainer"],
+  },
+  {
     name: "browser",
     description: "Browser automation via Chrome DevTools Protocol.",
     toolNames: ["cdp_browser"],
@@ -89,6 +94,10 @@ const DEFAULT_ACTIVE_TOOL_NAMES = [
   "messages",
   "keychain",
   "exit_process",
+] as const;
+
+const WINDOWS_DEFAULT_ACTIVE_TOOL_NAMES = [
+  "bun_run",
 ] as const;
 
 const TOOL_ACTIVATION_HINT = [
@@ -131,6 +140,7 @@ export function getToolsetsForTool(toolName: string): string[] {
 export function getDefaultActiveToolNames(platform = process.platform): string[] {
   return normalizeToolNamesForPlatform([
     ...DEFAULT_ACTIVE_TOOL_NAMES,
+    ...(platform === "win32" ? WINDOWS_DEFAULT_ACTIVE_TOOL_NAMES : []),
     ...getToolActivationConfig().additionalDefaultTools,
   ], platform);
 }

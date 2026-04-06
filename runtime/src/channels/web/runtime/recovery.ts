@@ -18,6 +18,7 @@ import {
 import { createLogger } from "../../../utils/logger.js";
 
 const log = createLogger("web.recovery");
+const RECOVERY_LANE_KEY = "web-recovery";
 
 /** Runtime callbacks required for inflight recovery/pending resume orchestration. */
 export interface WebRecoveryContext {
@@ -26,6 +27,8 @@ export interface WebRecoveryContext {
   enqueue(task: () => Promise<void>, key: string, laneKey?: string): void;
   processChat(chatJid: string, agentId: string, threadRootId?: number): Promise<void>;
   now?: () => number;
+  recoveryDelayMs?: number;
+  sleep?: (ms: number) => Promise<unknown>;
 }
 
 /** Persistence contract used by web recovery helpers. */
@@ -169,8 +172,11 @@ export function recoverInflightRuns(
       // immediate startup recovery and later IPC-driven recovery collapse to a
       // single queued task for the chat instead of racing duplicate replays.
       ctx.enqueue(async () => {
+        if ((ctx.recoveryDelayMs ?? 0) > 0) {
+          await (ctx.sleep ? ctx.sleep(ctx.recoveryDelayMs!) : Bun.sleep(ctx.recoveryDelayMs!));
+        }
         await ctx.processChat(inflight.chatJid, ctx.defaultAgentId);
-      }, `resume:${inflight.chatJid}`, `chat:${inflight.chatJid}`);
+      }, `resume:${inflight.chatJid}`, RECOVERY_LANE_KEY);
     }
   }
 }
@@ -200,7 +206,10 @@ export function resumePendingChats(
       chatJid: jid,
     });
     ctx.enqueue(async () => {
+      if ((ctx.recoveryDelayMs ?? 0) > 0) {
+        await (ctx.sleep ? ctx.sleep(ctx.recoveryDelayMs!) : Bun.sleep(ctx.recoveryDelayMs!));
+      }
       await ctx.processChat(jid, ctx.defaultAgentId);
-    }, `resume:${jid}`, `chat:${jid}`);
+    }, `resume:${jid}`, RECOVERY_LANE_KEY);
   }
 }

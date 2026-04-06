@@ -8,15 +8,49 @@
 import { expect, test, afterEach } from "bun:test";
 import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
+import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { getAttachmentRegistry } from "../../src/agent-pool/attachments.js";
 import { createTempWorkspace, getTestWorkspace, importFresh, setEnv } from "../helpers.js";
 
 let restoreEnv: (() => void) | null = null;
 
-afterEach(() => {
+function createRuntime(session: any, overrides: Partial<AgentSessionRuntime> = {}): AgentSessionRuntime {
+  return {
+    session,
+    cwd: "/workspace",
+    diagnostics: [],
+    services: {} as any,
+    modelFallbackMessage: undefined,
+    newSession: async (options?: any) => ({
+      cancelled: typeof session.newSession === "function" ? !(await session.newSession(options)) : false,
+    }),
+    switchSession: async (path: string) => ({
+      cancelled: typeof session.switchSession === "function" ? !(await session.switchSession(path)) : false,
+    }),
+    fork: async (entryId: string) => (
+      typeof session.fork === "function"
+        ? await session.fork(entryId)
+        : { cancelled: false }
+    ),
+    importFromJsonl: async () => ({ cancelled: false }),
+    dispose: async () => {
+      session.dispose?.();
+    },
+    ...overrides,
+  } as any;
+}
+
+afterEach(async () => {
   restoreEnv?.();
   restoreEnv = null;
+  try {
+    const sshCore = await import("../../src/extensions/ssh-core.js");
+    sshCore.setSshConnectionResolverForTests(null);
+    await sshCore.unregisterLiveChatSshSession("web:default");
+  } catch {
+    // ignore test cleanup failures for optional SSH state
+  }
 });
 
 test("agent pool aggregates streamed text and writes logs", async () => {
@@ -49,7 +83,7 @@ test("agent pool aggregates streamed text and writes logs", async () => {
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
   });
 
   const result = await pool.runAgent("test", "web:default");
@@ -90,7 +124,7 @@ test("agent pool honors timeout overrides", async () => {
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
   });
 
   const timedOut = await pool.runAgent("test", "web:default", { timeoutMs: 5 });
@@ -131,13 +165,72 @@ test("agent pool clears attachments when a run errors", async () => {
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
   });
 
   const result = await pool.runAgent("test", "web:default", { timeoutMs: 0 });
   expect(result.status).toBe("error");
   expect(result.attachments).toBeUndefined();
   expect(attachments.take("web:default").length).toBe(0);
+});
+
+test("agent pool stores SSH config for future sessions when no live SSH session exists", async () => {
+  const ws = getTestWorkspace();
+  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+
+  const { initDatabase, getSshConfig } = await importFresh<typeof import("../src/db.js")>("../src/db.js");
+  initDatabase();
+  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+
+  let pool: any;
+  let createCalls = 0;
+  let disposed = 0;
+
+  class StubSession {
+    isStreaming = false;
+    isBashRunning = false;
+    isCompacting = false;
+    subscribe(_listener: (event: any) => void) {
+      return () => {};
+    }
+    async prompt(_prompt: string) {
+      this.isStreaming = true;
+      try {
+        const result = await pool.setSshConfig("web:other", {
+          ssh_target: "agent@example.com:/srv/project",
+          ssh_port: 22,
+          private_key_keychain: "ssh-prod",
+          known_hosts_keychain: null,
+          strict_host_key_checking: "yes",
+        });
+        expect(result.apply_timing).toBe("next_session");
+        expect(getSshConfig("web:other")?.ssh_target).toBe("agent@example.com:/srv/project");
+      } finally {
+        this.isStreaming = false;
+      }
+    }
+    async abort() {}
+    dispose() {
+      disposed += 1;
+    }
+  }
+
+  pool = new AgentPool({
+    createSession: async () => {
+      createCalls += 1;
+      return createRuntime(new StubSession()) as any;
+    },
+  });
+
+  const result = await pool.runAgent("test", "web:default", { timeoutMs: 0 });
+  expect(result.status).toBe("success");
+  expect(disposed).toBe(0);
+  expect((pool as any).pool.has("web:default")).toBe(true);
+
+  await pool.runAgent("test", "web:default", { timeoutMs: 0 });
+  expect(createCalls).toBe(1);
+
+  await pool.shutdown();
 });
 
 test("agent pool evicts idle sessions and recreates them", async () => {
@@ -163,7 +256,7 @@ test("agent pool evicts idle sessions and recreates them", async () => {
   const pool = new AgentPool({
     createSession: async () => {
       createCalls += 1;
-      return new StubSession() as any;
+      return createRuntime(new StubSession()) as any;
     },
   });
 
@@ -211,7 +304,7 @@ test("agent pool can run a side prompt with the current model and thinking level
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
     modelRegistry: {
       getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "test-key" }),
       find: () => undefined,
@@ -281,7 +374,7 @@ test("agent pool forwards header-based auth for side prompts", async () => {
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
     modelRegistry: {
       getApiKeyAndHeaders: async () => ({
         ok: true,
@@ -416,10 +509,10 @@ test("agent pool forks active chats from the previous stable turn boundary", asy
 
   const pool = new AgentPool({
     createSession: async (chatJid: string, sessionDir: string) => {
-      if (created[chatJid]) return created[chatJid] as any;
+      if (created[chatJid]) return createRuntime(created[chatJid]) as any;
       const session = new ForkableSession(ws.workspace, sessionDir, false);
       created[chatJid] = session;
-      return session as any;
+      return createRuntime(session) as any;
     },
   });
 
@@ -475,7 +568,7 @@ test("agent pool refuses to prune an active branch session", async () => {
   }
 
   const pool = new AgentPool({
-    createSession: async () => new ActiveBranchSession() as any,
+    createSession: async () => createRuntime(new ActiveBranchSession()) as any,
   });
 
   await (pool as any).getOrCreate("web:default:branch:active");
@@ -506,7 +599,7 @@ test("agent pool reports side prompt errors when no model is active", async () =
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
   });
 
   const result = await pool.runSidePrompt("web:default", "Side question");
@@ -601,8 +694,8 @@ test("agent pool can run a tool-capable side prompt through a separate side sess
   }
 
   const pool = new AgentPool({
-    createSession: async () => new MainSession() as any,
-    createSideSession: async () => new SideSession() as any,
+    createSession: async () => createRuntime(new MainSession()) as any,
+    createSideSession: async () => createRuntime(new SideSession()) as any,
     modelRegistry: {
       getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "test-key" }),
       find: () => undefined,

@@ -6,14 +6,14 @@
  * existing map-based cache structure used by callers and tests.
  */
 
-import type { AgentSession, ModelRegistry, SettingsManager, AuthStorage } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionRuntime, ExtensionFactory, ModelRegistry, SettingsManager, AuthStorage } from "@mariozechner/pi-coding-agent";
 
 import { createDefaultSession, createSessionInDir, ensureNamedSessionDir, ensureSessionDir } from "./session.js";
 import { seedRotatedSession } from "../session-rotation.js";
 
 /** Cached session entry stored for each chat JID. */
 export interface PoolEntry {
-  session: AgentSession;
+  runtime: AgentSessionRuntime;
   lastUsed: number;
 }
 
@@ -21,13 +21,14 @@ export interface PoolEntry {
 export interface AgentSessionManagerOptions {
   pool: Map<string, PoolEntry>;
   sidePool: Map<string, PoolEntry>;
-  createSession?: (chatJid: string, sessionDir: string) => Promise<AgentSession>;
-  createSideSession?: (chatJid: string, sessionDir: string) => Promise<AgentSession>;
+  createSession?: (chatJid: string, sessionDir: string) => Promise<AgentSessionRuntime>;
+  createSideSession?: (chatJid: string, sessionDir: string) => Promise<AgentSessionRuntime>;
   authStorage: AuthStorage;
   modelRegistry: ModelRegistry;
   settingsManager: SettingsManager;
   createDefaultTools: () => NonNullable<Parameters<typeof createDefaultSession>[1]["tools"]>;
-  bindSession: (session: AgentSession, chatJid: string) => Promise<void>;
+  getSessionExtensionFactories?: (chatJid: string) => Promise<ExtensionFactory[]>;
+  bindSession: (runtime: AgentSessionRuntime, chatJid: string) => Promise<void>;
   ensureBranchRegistration: (chatJid: string, session?: AgentSession | null) => void;
   onInfo?: (message: string, details: Record<string, unknown>) => void;
   onWarn?: (message: string, details: Record<string, unknown>) => void;
@@ -40,11 +41,20 @@ export interface AgentSessionManagerOptions {
 export class AgentSessionManager {
   constructor(private readonly options: AgentSessionManagerOptions) {}
 
-  async getOrCreate(chatJid: string): Promise<AgentSession> {
+  async refreshRuntime(chatJid: string, runtime: AgentSessionRuntime): Promise<void> {
+    const entry = this.options.pool.get(chatJid);
+    if (entry) {
+      entry.lastUsed = Date.now();
+    }
+    await this.options.bindSession(runtime, chatJid);
+    this.options.ensureBranchRegistration(chatJid, runtime.session);
+  }
+
+  async getOrCreate(chatJid: string): Promise<AgentSessionRuntime> {
     const existing = this.options.pool.get(chatJid);
     if (existing) {
       existing.lastUsed = Date.now();
-      return existing.session;
+      return existing.runtime;
     }
 
     this.options.onInfo?.("Creating new session", {
@@ -54,44 +64,33 @@ export class AgentSessionManager {
 
     const chatSessionDir = ensureSessionDir(chatJid);
 
-    if (this.options.createSession) {
-      const session = await this.options.createSession(chatJid, chatSessionDir);
-      this.options.pool.set(chatJid, { session, lastUsed: Date.now() });
-      await this.applyDefaultModel(session);
-      await this.options.bindSession(session, chatJid);
-      this.options.ensureBranchRegistration(chatJid, session);
-      this.options.onInfo?.("Session ready", {
-        operation: "get_or_create.create_main_session",
-        chatJid,
-        poolSize: this.options.pool.size,
-      });
-      return session;
-    }
+    const extensionFactories = await this.options.getSessionExtensionFactories?.(chatJid) ?? [];
+    const runtime = this.options.createSession
+      ? await this.options.createSession(chatJid, chatSessionDir)
+      : await createDefaultSession(chatJid, {
+          authStorage: this.options.authStorage,
+          modelRegistry: this.options.modelRegistry,
+          settingsManager: this.options.settingsManager,
+          tools: this.options.createDefaultTools(),
+          extensionFactories,
+        });
 
-    const session = await createDefaultSession(chatJid, {
-      authStorage: this.options.authStorage,
-      modelRegistry: this.options.modelRegistry,
-      settingsManager: this.options.settingsManager,
-      tools: this.options.createDefaultTools(),
-    });
-
-    this.options.pool.set(chatJid, { session, lastUsed: Date.now() });
-    await this.applyDefaultModel(session);
-    await this.options.bindSession(session, chatJid);
-    this.options.ensureBranchRegistration(chatJid, session);
+    this.options.pool.set(chatJid, { runtime, lastUsed: Date.now() });
+    await this.applyDefaultModel(runtime.session);
+    await this.refreshRuntime(chatJid, runtime);
     this.options.onInfo?.("Session ready", {
-      operation: "get_or_create.create_default_session",
+      operation: this.options.createSession ? "get_or_create.create_main_session" : "get_or_create.create_default_session",
       chatJid,
       poolSize: this.options.pool.size,
     });
-    return session;
+    return runtime;
   }
 
-  async getOrCreateSide(chatJid: string): Promise<AgentSession> {
+  async getOrCreateSide(chatJid: string): Promise<AgentSessionRuntime> {
     const existing = this.options.sidePool.get(chatJid);
     if (existing) {
       existing.lastUsed = Date.now();
-      return existing.session;
+      return existing.runtime;
     }
 
     this.options.onInfo?.("Creating new side session", {
@@ -100,23 +99,25 @@ export class AgentSessionManager {
     });
     const sideSessionDir = ensureNamedSessionDir(chatJid, "btw-side");
 
-    const session = this.options.createSideSession
+    const extensionFactories = await this.options.getSessionExtensionFactories?.(chatJid) ?? [];
+    const runtime = this.options.createSideSession
       ? await this.options.createSideSession(chatJid, sideSessionDir)
       : await createSessionInDir(sideSessionDir, {
           authStorage: this.options.authStorage,
           modelRegistry: this.options.modelRegistry,
           settingsManager: this.options.settingsManager,
           tools: this.options.createDefaultTools(),
+          extensionFactories,
         });
 
-    this.options.sidePool.set(chatJid, { session, lastUsed: Date.now() });
-    return session;
+    this.options.sidePool.set(chatJid, { runtime, lastUsed: Date.now() });
+    return runtime;
   }
 
-  async syncSideSessionFromMain(mainSession: AgentSession, sideSession: AgentSession): Promise<void> {
+  async syncSideSessionFromMain(mainSession: AgentSession, sideRuntime: AgentSessionRuntime): Promise<void> {
     try {
       const mainContext = mainSession.sessionManager.buildSessionContext();
-      await sideSession.newSession({
+      await sideRuntime.newSession({
         setup: async (sessionManager) => {
           seedRotatedSession(sessionManager, mainContext, {
             sessionName: "BTW",
@@ -131,6 +132,7 @@ export class AgentSessionManager {
       });
     }
 
+    const sideSession = sideRuntime.session;
     const mainModel = mainSession.model;
     const sideModel = sideSession.model;
     if (mainModel && (!sideModel || sideModel.provider !== mainModel.provider || sideModel.id !== mainModel.id)) {
@@ -164,45 +166,51 @@ export class AgentSessionManager {
     }
   }
 
+  async recreate(chatJid: string): Promise<void> {
+    await this.disposeEntry(this.options.pool, chatJid, "recreate.dispose_main_session");
+    await this.disposeEntry(this.options.sidePool, chatJid, "recreate.dispose_side_session", true);
+  }
+
   async shutdown(): Promise<void> {
-    for (const [jid, entry] of this.options.pool) {
-      try {
-        entry.session.dispose();
-        this.options.onInfo?.("Disposed session", {
-          operation: "shutdown.dispose_main_session",
-          chatJid: jid,
-        });
-      } catch (err) {
-        this.options.onError?.("Failed to dispose session during shutdown", {
-          operation: "shutdown.dispose_main_session",
-          chatJid: jid,
-          err,
-        });
-      }
+    for (const jid of [...this.options.pool.keys()]) {
+      await this.disposeEntry(this.options.pool, jid, "shutdown.dispose_main_session");
     }
-    for (const [jid, entry] of this.options.sidePool) {
-      try {
-        entry.session.dispose();
-        this.options.onInfo?.("Disposed side session", {
-          operation: "shutdown.dispose_side_session",
-          chatJid: jid,
-        });
-      } catch (err) {
-        this.options.onError?.("Failed to dispose side session during shutdown", {
-          operation: "shutdown.dispose_side_session",
-          chatJid: jid,
-          err,
-        });
-      }
+    for (const jid of [...this.options.sidePool.keys()]) {
+      await this.disposeEntry(this.options.sidePool, jid, "shutdown.dispose_side_session", true);
     }
     this.options.pool.clear();
     this.options.sidePool.clear();
   }
 
+  private async disposeEntry(
+    map: Map<string, PoolEntry>,
+    chatJid: string,
+    operation: string,
+    side = false,
+  ): Promise<void> {
+    const entry = map.get(chatJid);
+    if (!entry) return;
+    try {
+      await entry.runtime.dispose();
+      this.options.onInfo?.(side ? "Disposed side session" : "Disposed session", {
+        operation,
+        chatJid,
+      });
+    } catch (err) {
+      this.options.onError?.(side ? "Failed to dispose side session" : "Failed to dispose session", {
+        operation,
+        chatJid,
+        err,
+      });
+    } finally {
+      map.delete(chatJid);
+    }
+  }
+
   evictIdle(idleTtlMs: number): void {
     const now = Date.now();
     for (const [jid, entry] of this.options.pool) {
-      const session = entry.session;
+      const session = entry.runtime.session;
       if (session.isStreaming || session.isBashRunning || session.isCompacting) {
         entry.lastUsed = now;
         continue;
@@ -212,20 +220,18 @@ export class AgentSessionManager {
           operation: "evict_idle.main_session",
           chatJid: jid,
         });
-        try {
-          session.dispose();
-        } catch (err) {
+        Promise.resolve(entry.runtime.dispose()).catch((err) => {
           this.options.onWarn?.("Failed to dispose evicted session", {
             operation: "evict_idle.main_session",
             chatJid: jid,
             err,
           });
-        }
+        });
         this.options.pool.delete(jid);
       }
     }
     for (const [jid, entry] of this.options.sidePool) {
-      const session = entry.session;
+      const session = entry.runtime.session;
       if (session.isStreaming || session.isBashRunning || session.isCompacting) {
         entry.lastUsed = now;
         continue;
@@ -235,15 +241,13 @@ export class AgentSessionManager {
           operation: "evict_idle.side_session",
           chatJid: jid,
         });
-        try {
-          session.dispose();
-        } catch (err) {
+        Promise.resolve(entry.runtime.dispose()).catch((err) => {
           this.options.onWarn?.("Failed to dispose evicted side session", {
             operation: "evict_idle.side_session",
             chatJid: jid,
             err,
           });
-        }
+        });
         this.options.sidePool.delete(jid);
       }
     }

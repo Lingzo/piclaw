@@ -64,6 +64,24 @@ export {
   getTaskRunLogs,
 } from "./db/tasks.js";
 export {
+  getSshConfig,
+  upsertSshConfig,
+  deleteSshConfig,
+  listSshConfigs,
+} from "./db/ssh-configs.js";
+export {
+  getProxmoxConfig,
+  upsertProxmoxConfig,
+  deleteProxmoxConfig,
+  listProxmoxConfigs,
+} from "./db/proxmox-configs.js";
+export {
+  getPortainerConfig,
+  upsertPortainerConfig,
+  deletePortainerConfig,
+  listPortainerConfigs,
+} from "./db/portainer-configs.js";
+export {
   storeToolOutput,
   insertToolOutputChunk,
   getToolOutputById,
@@ -120,3 +138,15 @@ export type {
   InteractionRow,
   ToolOutputRecord,
 } from "./db/types.js";
+export type {
+  SshConfig,
+  SshConfigApplyTiming,
+  SshConfigClearResult,
+  SshConfigSetResult,
+  ProxmoxConfig,
+  ProxmoxConfigClearResult,
+  ProxmoxConfigSetResult,
+  PortainerConfig,
+  PortainerConfigClearResult,
+  PortainerConfigSetResult,
+} from "./types.js";

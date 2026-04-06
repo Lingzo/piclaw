@@ -118,6 +118,59 @@ Notes:
 
 Deprecated env names (still supported): `ASSISTANT_NAME`, `ASSISTANT_AVATAR`, `AGENT_TIMEOUT`, `AGENT_TIMEOUT_BACKGROUND`.
 
+## SSH-backed remote core tools
+
+Piclaw can redirect the core file/shell tools (`read`, `write`, `edit`, `bash`) to a remote host over SSH.
+
+There are two ways to enable it:
+
+1. **Startup/default session config** via env vars:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PICLAW_SSH_TARGET` | _(empty)_ | SSH target as `user@host` or `user@host:/remote/path` |
+| `PICLAW_SSH_PORT` | `22` | SSH port for startup/default remote sessions |
+
+2. **Per-chat live config** via the agent-only `ssh` tool:
+   - `ssh { action: "set", ssh_target, private_key_keychain, ... }`
+   - `ssh { action: "get" }`
+   - `ssh { action: "clear" }`
+
+The `ssh` tool stores chat-scoped profiles in SQLite and applies them immediately to live sessions when possible. That means the agent can switch a chat from local → remote → local again in the same turn/session without recreating the session runtime.
+
+### Required key material
+
+Live per-chat SSH uses keychain-backed credentials:
+
+- `private_key_keychain` — required; keychain entry containing the OpenSSH private key
+- `known_hosts_keychain` — optional; keychain entry containing `known_hosts` content
+- `strict_host_key_checking` — `yes`, `accept-new`, or `no`
+
+Example tool payload:
+
+```json
+{
+  "action": "set",
+  "ssh_target": "agent@example.com:/srv/project",
+  "ssh_port": 22,
+  "private_key_keychain": "ssh/prod",
+  "known_hosts_keychain": "ssh/prod.known_hosts",
+  "strict_host_key_checking": "accept-new"
+}
+```
+
+### Transport behavior
+
+The SSH backend keeps the same remote-tool semantics as the packaged SSH extension model:
+
+- multiplexed connection reuse with `ControlMaster=auto`
+- `ControlPersist=600`
+- persistent remote shell/session reuse across tool calls
+- remote cwd/home mapping from the configured target path
+- immediate live switching when the chat already has a warm session
+
+If a chat has no stored SSH profile, core tools run locally as usual.
+
 ### Assistant name and avatar
 
 Set via environment variables (see above) or in `.piclaw/config.json`:
@@ -141,7 +194,7 @@ Built-in default baseline:
 - `read`
 - `edit`
 - `write`
-- `bash` on Linux/macOS, or `powershell` on Windows
+- `bash` on Linux/macOS, or `powershell` plus `bun_run` on Windows
 - `list_internal_tools`
 - `activate_tools`
 - `reset_active_tools`
@@ -179,6 +232,79 @@ Notes:
 - Unknown tool names are ignored when the active tool list is applied.
 - On Windows, `bash` is replaced by the `powershell` tool in the default active set.
 - Newly activated tools become available immediately to subsequent tool/model steps in the same turn; keep critical control tools in the default baseline or config-defined defaults.
+
+### Workspace search / FTS roots
+
+Piclaw's `search_workspace` tool uses SQLite FTS over a configurable set of workspace roots.
+Dream and AutoDream refresh this index at the end of memory maintenance so generated note outputs are searchable immediately.
+
+Default roots:
+
+- `notes`
+- `.pi/skills`
+
+Override them with either `.piclaw/config.json`:
+
+```json
+{
+  "tools": {
+    "workspaceSearchRoots": [
+      "notes",
+      ".pi/skills",
+      "docs",
+      "workitems"
+    ]
+  }
+}
+```
+
+or an environment variable:
+
+```bash
+PICLAW_WORKSPACE_SEARCH_ROOTS="notes,.pi/skills,docs,workitems"
+```
+
+Rules:
+
+- Relative paths are resolved against `PICLAW_WORKSPACE`
+- Absolute paths are allowed
+- Configured roots are indexed automatically at session start
+- `search_workspace` can still refresh indexing on demand per call
+- `scope: notes` and `scope: skills` remain the built-in convenience filters; `scope: all` searches across the configured root set
+
+### Dream and AutoDream
+
+Memory maintenance has two trigger modes:
+
+- `Dream` — manual `/dream [days]`
+- `AutoDream` — built-in nightly scheduled task (`builtin-dream-midnight`)
+
+Both modes now run as out-of-band model turns on a temporary `dream:` channel.
+The dream channel is cleaned up after the cycle ends.
+Before the model turn begins, runtime creates a pre-Dream backup of `notes/daily/` and `notes/memory/` and refreshes/seeds in-window daily notes from the messages database.
+
+AutoDream is gated and only runs when both are true:
+
+- at least 24 hours since the last consolidation
+- at least 6 sessions since the last consolidation
+
+The model follows the original 4-phase Dream flow:
+
+1. Orient
+2. Signal
+3. Consolidate
+4. Prune and Index
+
+In the Prune and Index phase, Dream should both remove stale pointers and add concise references to newly important memories; verbose `MEMORY.md` lines should be shortened with detail moved into the linked file.
+
+Search collection should stay narrow:
+
+- inspect daily/memory files first
+- inspect drifted memories
+- use narrow message searches for already suspected terms
+- avoid exhaustive transcript sweeps
+
+See [runtime/docs/dream-memory.md](../runtime/docs/dream-memory.md) for the detailed file sequence and outputs.
 
 ## Authentication (TOTP + passkeys)
 
