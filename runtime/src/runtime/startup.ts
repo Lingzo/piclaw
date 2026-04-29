@@ -32,7 +32,7 @@ import { registerLazyViewerRoutes } from "../channels/web/http/lazy-viewer-route
 import { freezeExtensionRoutes } from "../channels/web/http/extension-routes.js";
 
 const log = createLogger("runtime.startup");
-const WORKSPACE_SKEL_DIR = resolve(import.meta.dir, "../../../skel");
+const WORKSPACE_SKEL_DIR = resolve(process.env.PICLAW_SKEL_DIR || resolve(import.meta.dir, "../../../skel"));
 const STARTUP_MEMORY_SNAPSHOT_DIR = join(DATA_DIR, "startup-memory-snapshots");
 export const STARTUP_STATUS_CHAT_JID = "web:default";
 export const STARTUP_STATUS_TURN_ID = "startup:web:default";
