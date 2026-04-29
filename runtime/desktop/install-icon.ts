@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 import sharp from "sharp";
@@ -70,6 +70,28 @@ function findBuiltApp(): string | null {
   return app ? join(buildDir, app) : null;
 }
 
+function upsertPlistString(plist: string, key: string, value: string): string {
+  const keyPattern = new RegExp(`(\\s*<key>${key}</key>\\s*)<string>[^<]*</string>`);
+  if (keyPattern.test(plist)) {
+    return plist.replace(keyPattern, `$1<string>${value}</string>`);
+  }
+  return plist.replace("</dict>", `    <key>${key}</key>\n    <string>${value}</string>\n</dict>`);
+}
+
+function updateAppIconMetadata(appPath: string): void {
+  const plistPath = join(appPath, "Contents", "Info.plist");
+  if (!existsSync(plistPath)) return;
+
+  let plist = readFileSync(plistPath, "utf8");
+  plist = upsertPlistString(plist, "CFBundleIconFile", "AppIcon.icns");
+  plist = upsertPlistString(plist, "CFBundleIconName", "AppIcon");
+  writeFileSync(plistPath, plist);
+
+  const now = new Date();
+  utimesSync(plistPath, now, now);
+  utimesSync(appPath, now, now);
+}
+
 await buildIcns();
 console.log(`[desktop:icons] generated ${OUTPUT_ICNS}`);
 
@@ -78,5 +100,6 @@ if (appPath) {
   const destPath = join(appPath, "Contents", "Resources", "AppIcon.icns");
   mkdirSync(dirname(destPath), { recursive: true });
   copyFileSync(OUTPUT_ICNS, destPath);
+  updateAppIconMetadata(appPath);
   console.log(`[desktop:icons] installed ${destPath}`);
 }

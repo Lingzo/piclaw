@@ -1,11 +1,24 @@
 import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 
-import { BrowserWindow, PATHS, Utils } from "electrobun/bun";
+import {
+  ApplicationMenu,
+  BrowserWindow,
+  PATHS,
+  Utils,
+  type ApplicationMenuItemConfig,
+} from "electrobun/bun";
 
 const DEFAULT_DESKTOP_PORT_START = 18080;
 const STARTUP_TIMEOUT_MS = 120_000;
 const STARTUP_POLL_MS = 500;
+const APP_NAME = "PiClaw";
+const ZOOM_STEP = 0.1;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 3;
+
+let activeWindow: BrowserWindow | null = null;
+let runtimeUrl: string | null = null;
 
 function isTruthy(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/i.test(String(value || "").trim());
@@ -93,8 +106,200 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[char]!));
 }
 
+function clampZoom(value: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(value * 10) / 10));
+}
+
+function runInActiveWindow(script: string): void {
+  activeWindow?.webview?.executeJavascript(script);
+}
+
+function reloadActiveWindow(force = false): void {
+  const win = activeWindow;
+  if (!win) return;
+  if (force && runtimeUrl) {
+    win.webview.loadURL(runtimeUrl);
+    return;
+  }
+  win.webview.executeJavascript("globalThis.location.reload();");
+}
+
+function setActiveWindowZoom(zoom: number): void {
+  activeWindow?.setPageZoom(clampZoom(zoom));
+}
+
+function adjustActiveWindowZoom(delta: number): void {
+  const currentZoom = activeWindow?.getPageZoom() ?? 1;
+  setActiveWindowZoom(currentZoom + delta);
+}
+
+function openDesktopWindow(): BrowserWindow | null {
+  if (!runtimeUrl) return null;
+  return openWindow(runtimeUrl);
+}
+
+function menuItem(role: string, accelerator?: string): ApplicationMenuItemConfig {
+  return { role, accelerator };
+}
+
+function separator(): ApplicationMenuItemConfig {
+  return { type: "divider" };
+}
+
+function configureApplicationMenu(): void {
+  const menu: ApplicationMenuItemConfig[] = [
+    {
+      label: APP_NAME,
+      submenu: [
+        menuItem("about"),
+        separator(),
+        {
+          label: "Settings...",
+          action: "open-settings",
+          accelerator: "Command+,",
+        },
+        separator(),
+        menuItem("hide", "Command+H"),
+        menuItem("hideOthers", "Command+Option+H"),
+        menuItem("showAll"),
+        separator(),
+        menuItem("quit", "Command+Q"),
+      ],
+    },
+    {
+      label: "File",
+      submenu: [
+        {
+          label: "New Window",
+          action: "new-window",
+          accelerator: "Command+N",
+        },
+        separator(),
+        menuItem("close", "Command+W"),
+      ],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        menuItem("undo", "Command+Z"),
+        menuItem("redo", "Command+Shift+Z"),
+        separator(),
+        menuItem("cut", "Command+X"),
+        menuItem("copy", "Command+C"),
+        menuItem("paste", "Command+V"),
+        menuItem("pasteAndMatchStyle", "Command+Option+Shift+V"),
+        menuItem("delete"),
+        separator(),
+        menuItem("selectAll", "Command+A"),
+        separator(),
+        {
+          label: "Speech",
+          submenu: [
+            menuItem("startSpeaking"),
+            menuItem("stopSpeaking"),
+          ],
+        },
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        {
+          label: "Reload",
+          action: "reload",
+          accelerator: "Command+R",
+        },
+        {
+          label: "Force Reload",
+          action: "force-reload",
+          accelerator: "Command+Shift+R",
+        },
+        separator(),
+        {
+          label: "Actual Size",
+          action: "actual-size",
+          accelerator: "Command+0",
+        },
+        {
+          label: "Zoom In",
+          action: "zoom-in",
+          accelerator: "Command+=",
+        },
+        {
+          label: "Zoom Out",
+          action: "zoom-out",
+          accelerator: "Command+-",
+        },
+        separator(),
+        menuItem("toggleFullScreen", "Control+Command+F"),
+        separator(),
+        {
+          label: "Toggle Developer Tools",
+          action: "toggle-devtools",
+          accelerator: "Option+Command+I",
+        },
+      ],
+    },
+    {
+      label: "Window",
+      submenu: [
+        menuItem("minimize", "Command+M"),
+        menuItem("zoom"),
+        separator(),
+        menuItem("cycleThroughWindows", "Command+`"),
+        separator(),
+        menuItem("bringAllToFront"),
+      ],
+    },
+    {
+      label: "Help",
+      submenu: [
+        {
+          label: `${APP_NAME} Help`,
+          action: "open-help",
+          accelerator: "Command+?",
+        },
+      ],
+    },
+  ];
+
+  ApplicationMenu.setApplicationMenu(menu);
+  ApplicationMenu.on("application-menu-clicked", (event) => {
+    const action = (event as { data?: { action?: string } })?.data?.action;
+    switch (action) {
+      case "new-window":
+        openDesktopWindow();
+        break;
+      case "open-settings":
+        runInActiveWindow("window.dispatchEvent(new CustomEvent('piclaw:open-settings'));");
+        break;
+      case "reload":
+        reloadActiveWindow();
+        break;
+      case "force-reload":
+        reloadActiveWindow(true);
+        break;
+      case "actual-size":
+        setActiveWindowZoom(1);
+        break;
+      case "zoom-in":
+        adjustActiveWindowZoom(ZOOM_STEP);
+        break;
+      case "zoom-out":
+        adjustActiveWindowZoom(-ZOOM_STEP);
+        break;
+      case "toggle-devtools":
+        activeWindow?.webview?.toggleDevTools();
+        break;
+      case "open-help":
+        runInActiveWindow("window.dispatchEvent(new CustomEvent('piclaw:open-settings', { detail: { section: 'keyboard' } }));");
+        break;
+    }
+  });
+}
+
 function openWindow(url: string): BrowserWindow {
-  return new BrowserWindow({
+  const win = new BrowserWindow({
     title: "PiClaw",
     url,
     frame: {
@@ -105,6 +310,11 @@ function openWindow(url: string): BrowserWindow {
     },
     titleBarStyle: "default",
   });
+  activeWindow = win;
+  win.on("focus", () => {
+    activeWindow = win;
+  });
+  return win;
 }
 
 function openStartupErrorWindow(error: unknown): void {
@@ -138,6 +348,8 @@ function openStartupErrorWindow(error: unknown): void {
 
 try {
   const runtime = await configureDesktopRuntime();
+  runtimeUrl = runtime.url;
+  configureApplicationMenu();
 
   if (runtime.ownsRuntime && !isTruthy(process.env.PICLAW_DESKTOP_SKIP_RUNTIME)) {
     const { main } = await import("../src/runtime.js");
