@@ -1,5 +1,5 @@
 import { createServer } from "node:net";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { BrowserWindow, PATHS, Utils } from "electrobun/bun";
 
@@ -12,17 +12,26 @@ function isTruthy(value: string | undefined): boolean {
 }
 
 async function findAvailablePort(startPort: number): Promise<number> {
+  let lastError: unknown = null;
   for (let port = startPort; port < startPort + 100; port += 1) {
-    const available = await new Promise<boolean>((resolve) => {
+    const available = await new Promise<boolean>((resolve, reject) => {
       const server = createServer();
-      server.once("error", () => resolve(false));
+      server.once("error", (error: NodeJS.ErrnoException) => {
+        lastError = error;
+        if (error.code === "EADDRINUSE" || error.code === "EACCES") {
+          resolve(false);
+        } else {
+          reject(error);
+        }
+      });
       server.listen(port, "127.0.0.1", () => {
         server.close(() => resolve(true));
       });
     });
     if (available) return port;
   }
-  throw new Error(`No available localhost port found from ${startPort} to ${startPort + 99}.`);
+  const reason = lastError instanceof Error ? ` Last probe error: ${lastError.message}` : "";
+  throw new Error(`No available localhost port found from ${startPort} to ${startPort + 99}.${reason}`);
 }
 
 async function waitForHttpReady(url: string, timeoutMs = STARTUP_TIMEOUT_MS): Promise<void> {
@@ -51,7 +60,7 @@ async function configureDesktopRuntime(): Promise<{ url: string; ownsRuntime: bo
     return { url: externalUrl, ownsRuntime: false };
   }
 
-  const resourcesAppDir = join(PATHS.RESOURCES_FOLDER, "app");
+  const resourcesAppDir = dirname(PATHS.VIEWS_FOLDER);
   const runtimeRoot = join(resourcesAppDir, "runtime");
   const desktopWorkspace = join(Utils.paths.appData, "PiClaw", "workspace");
   const requestedPort = Number.parseInt(process.env.PICLAW_WEB_PORT || "", 10);

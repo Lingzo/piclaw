@@ -13,9 +13,12 @@ export default {
     exitOnLastWindowClosed: true,
     mode: "piclaw-desktop-shell",
   },
+  scripts: {
+    postBuild: "runtime/desktop/install-icon.ts",
+  },
   build: {
     bun: {
-      entrypoint: "runtime/desktop/electrobun-main.ts",
+      entrypoint: "runtime/desktop/index.ts",
       sourcemap: "linked",
     },
     copy: {
@@ -30,6 +33,10 @@ export default {
       "runtime/vendor": "runtime/vendor",
       "runtime/docs": "runtime/docs",
       "runtime/web/static": "runtime/web/static",
+      "node_modules/@mariozechner/pi-coding-agent/dist/core/export-html": "dist/core/export-html",
+      "node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/assets": "dist/modes/interactive/assets",
+      "node_modules/@mariozechner/pi-coding-agent/dist/modes/interactive/theme": "dist/modes/interactive/theme",
+      "docs": "docs",
       "skel": "skel",
       "README.md": "README.md",
       "LICENSE": "LICENSE",
@@ -51,10 +58,12 @@ export default {
     win: {
       bundleCEF: false,
       defaultRenderer: "native",
+      icon: "docs/icon.png",
     },
     linux: {
       bundleCEF: false,
       defaultRenderer: "native",
+      icon: "docs/icon.png",
     },
   },
   release: {
