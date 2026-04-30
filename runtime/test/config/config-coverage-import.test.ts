@@ -180,7 +180,7 @@ test("plain import covers config module init branches with isolated argv and env
     expect(snapshot["same:getToolActivationConfig:TOOL_ACTIVATION_CONFIG"]).toBe(true);
     expect(snapshot.PUSHOVER_CONFIG).toEqual({ appToken: "push-app", userKey: "push-user", device: "push-device", priority: 1, sound: "magic" });
     expect(snapshot["same:getPushoverConfig:PUSHOVER_CONFIG"]).toBe(true);
-    expect(snapshot.WHATSAPP_CONFIG).toEqual({ phoneNumber: "+15557650000" });
+    expect(snapshot.WHATSAPP_CONFIG).toEqual({ enabled: false, phoneNumber: "+15557650000" });
     expect(snapshot["same:getWhatsAppConfig:WHATSAPP_CONFIG"]).toBe(true);
 
     expect(stderr).toContain("Deprecated environment variable is set");

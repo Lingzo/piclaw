@@ -196,6 +196,10 @@ const toolsConfig =
   piclawConfig.tools && typeof piclawConfig.tools === "object"
     ? (piclawConfig.tools as Record<string, unknown>)
     : piclawConfig;
+const whatsappConfig =
+  piclawConfig.whatsapp && typeof piclawConfig.whatsapp === "object"
+    ? (piclawConfig.whatsapp as Record<string, unknown>)
+    : piclawConfig;
 const compactionConfig =
   piclawConfig.compaction && typeof piclawConfig.compaction === "object"
     ? (piclawConfig.compaction as Record<string, unknown>)
@@ -217,7 +221,12 @@ const configUserKey = pickString(pushoverConfig, ["userKey", "user_key", "PUSHOV
 const configDevice = pickString(pushoverConfig, ["device", "PUSHOVER_DEVICE"]);
 const configSound = pickString(pushoverConfig, ["sound", "PUSHOVER_SOUND"]);
 const configPriority = pickNumber(pushoverConfig, ["priority", "PUSHOVER_PRIORITY"]);
-const configWhatsappPhone = pickString(piclawConfig, ["whatsappPhone", "whatsapp_phone", "WHATSAPP_PHONE"]);
+const configWhatsappPhone =
+  pickString(whatsappConfig, ["phoneNumber", "phone_number", "whatsappPhone", "whatsapp_phone", "WHATSAPP_PHONE", "PICLAW_WHATSAPP_PHONE"]) ||
+  pickString(piclawConfig, ["whatsappPhone", "whatsapp_phone", "WHATSAPP_PHONE", "PICLAW_WHATSAPP_PHONE"]);
+const configWhatsappEnabled =
+  pickBoolean(whatsappConfig, ["enabled", "whatsappEnabled", "whatsapp_enabled", "WHATSAPP_ENABLED", "PICLAW_WHATSAPP_ENABLED"]) ??
+  pickBoolean(piclawConfig, ["whatsappEnabled", "whatsapp_enabled", "WHATSAPP_ENABLED", "PICLAW_WHATSAPP_ENABLED"]);
 const configAssistantName = pickString(assistantConfig, [
   "assistantName",
   "assistant_name",
@@ -1390,11 +1399,19 @@ export function getToolOutputConfig(): Readonly<ToolOutputConfig> {
 
 /** Typed WhatsApp channel settings grouped for startup/channel wiring. */
 export interface WhatsAppConfig {
+  /** Explicit opt-in. Defaults to false even when a legacy phone number is present. */
+  enabled: boolean;
   phoneNumber: string;
 }
 
+const envWhatsappEnabled = pickBoolean({
+  PICLAW_WHATSAPP_ENABLED: process.env.PICLAW_WHATSAPP_ENABLED ?? envConfig.PICLAW_WHATSAPP_ENABLED,
+  WHATSAPP_ENABLED: process.env.WHATSAPP_ENABLED ?? envConfig.WHATSAPP_ENABLED,
+}, ["PICLAW_WHATSAPP_ENABLED", "WHATSAPP_ENABLED"]);
+
 /** Grouped WhatsApp channel settings. */
 export const WHATSAPP_CONFIG = Object.freeze<WhatsAppConfig>({
+  enabled: envWhatsappEnabled ?? configWhatsappEnabled ?? false,
   phoneNumber:
     process.env.WHATSAPP_PHONE ||
     envConfig.WHATSAPP_PHONE ||

@@ -7,7 +7,6 @@ import { dirname, join, resolve } from "path";
 import type { AgentPool } from "../agent-pool.js";
 import { WebChannel } from "../channels/web.js";
 import { PushoverChannel } from "../channels/pushover.js";
-import { WhatsAppChannel } from "../channels/whatsapp.js";
 import { setMessagesPostFn } from "../extensions/messages-crud.js";
 import { setChatToolRelayFn } from "../extensions/chat-tool.js";
 import {
@@ -403,49 +402,87 @@ export async function startOptionalPushoverChannel(): Promise<PushoverChannel | 
   return pushover;
 }
 
-/** Build WhatsApp channel with runtime callbacks and pairing IPC integration. */
-export function createWhatsAppChannel(state: RuntimeState): WhatsAppChannel {
+/** Runtime-facing WhatsApp channel boundary. The concrete Baileys channel is optional and lazy-loaded. */
+export interface RuntimeWhatsAppChannel {
+  connect(): Promise<unknown>;
+  disconnect(): Promise<unknown>;
+  sendMessage(jid: string, text: string): Promise<void>;
+  setTyping(jid: string, isTyping: boolean): Promise<void>;
+  isConnected(): boolean;
+}
+
+function createNoopWhatsAppChannel(): RuntimeWhatsAppChannel {
+  return {
+    connect: async () => {},
+    disconnect: async () => {},
+    sendMessage: async () => {},
+    setTyping: async () => {},
+    isConnected: () => false,
+  };
+}
+
+/** Build optional WhatsApp channel with runtime callbacks and pairing IPC integration. */
+export function createWhatsAppChannel(state: RuntimeState): RuntimeWhatsAppChannel {
   const whatsAppConfig = getWhatsAppConfig();
+  if (!whatsAppConfig.enabled) {
+    if (whatsAppConfig.phoneNumber) {
+      log.info("WhatsApp phone is configured but channel is disabled; set PICLAW_WHATSAPP_ENABLED=1 to opt in.", {
+        operation: "whatsapp.disabled_with_phone",
+      });
+    }
+    return createNoopWhatsAppChannel();
+  }
   if (!whatsAppConfig.phoneNumber) {
-    // Return a no-op stub when WhatsApp is not configured.
-    // The runtime expects a whatsapp object with connect/disconnect/sendMessage/setTyping.
-    return {
-      connect: async () => {},
-      disconnect: async () => {},
-      sendMessage: async () => {},
-      setTyping: async () => {},
-      isConnected: () => false,
-    } as unknown as WhatsAppChannel;
+    log.warn("WhatsApp is enabled but no phone number is configured; using no-op channel.", {
+      operation: "whatsapp.enabled_missing_phone",
+    });
+    return createNoopWhatsAppChannel();
   }
 
-  return new WhatsAppChannel({
-    chatJids: () => state.chatJids,
-    phoneNumber: whatsAppConfig.phoneNumber || undefined,
-    onPairingCode: (code) => {
-      try {
-        const ipcDir = join(DATA_DIR, "ipc", "messages");
-        mkdirSync(ipcDir, { recursive: true });
-        const payload = {
-          type: "message",
-          chatJid: "web:default",
-          text: code,
-        };
-        const filePath = join(ipcDir, `${createUuid("pairing")}.json`);
-        writeFileSync(filePath, JSON.stringify(payload));
-      } catch (error) {
-        log.error("Failed to write pairing code IPC message", {
-          operation: "pairing_code_ipc",
-          err: error,
-        });
-      }
+  let channel: RuntimeWhatsAppChannel | null = null;
+  const load = async (): Promise<RuntimeWhatsAppChannel> => {
+    if (channel) return channel;
+    const mod = await import("../channels/whatsapp.js");
+    channel = new mod.WhatsAppChannel({
+      chatJids: () => state.chatJids,
+      phoneNumber: whatsAppConfig.phoneNumber || undefined,
+      onPairingCode: (code) => {
+        try {
+          const ipcDir = join(DATA_DIR, "ipc", "messages");
+          mkdirSync(ipcDir, { recursive: true });
+          const payload = {
+            type: "message",
+            chatJid: "web:default",
+            text: code,
+          };
+          const filePath = join(ipcDir, `${createUuid("pairing")}.json`);
+          writeFileSync(filePath, JSON.stringify(payload));
+        } catch (error) {
+          log.error("Failed to write pairing code IPC message", {
+            operation: "pairing_code_ipc",
+            err: error,
+          });
+        }
+      },
+      onMessage: (chatJid, msg) => {
+        if (!state.chatJids.has(chatJid) && msg.is_from_me) {
+          state.chatJids.add(chatJid);
+          state.saveChats();
+        }
+        storeMessage(msg);
+      },
+      onChatMetadata: (chatJid, timestamp) => storeChatMetadata(chatJid, timestamp),
+    });
+    return channel;
+  };
+
+  return {
+    connect: async () => await (await load()).connect(),
+    disconnect: async () => {
+      if (channel) await channel.disconnect();
     },
-    onMessage: (chatJid, msg) => {
-      if (!state.chatJids.has(chatJid) && msg.is_from_me) {
-        state.chatJids.add(chatJid);
-        state.saveChats();
-      }
-      storeMessage(msg);
-    },
-    onChatMetadata: (chatJid, timestamp) => storeChatMetadata(chatJid, timestamp),
-  });
+    sendMessage: async (jid, text) => await (await load()).sendMessage(jid, text),
+    setTyping: async (jid, isTyping) => await (await load()).setTyping(jid, isTyping),
+    isConnected: () => channel?.isConnected() ?? false,
+  };
 }

@@ -18,7 +18,6 @@
 
 import type { AgentPool } from "../agent-pool.js";
 import { formatRecoverySummary } from "../agent-pool/automatic-recovery.js";
-import type { WhatsAppChannel } from "../channels/whatsapp.js";
 import { parseControlCommand, type AgentControlCommand } from "../agent-control/index.js";
 import { getMessagesSince, getNewMessages } from "../db.js";
 import type { AgentQueue } from "../queue.js";
@@ -32,9 +31,14 @@ const log = createLogger("runtime.message-loop");
  * Dependencies injected into the message-processing functions.
  * Provided by runtime.ts to avoid circular imports.
  */
+export interface MessageProcessingWhatsAppChannel {
+  sendMessage(jid: string, text: string): Promise<void>;
+  setTyping(jid: string, isTyping: boolean): Promise<void>;
+}
+
 export interface MessageProcessingDeps {
   agentPool: AgentPool;
-  whatsapp: WhatsAppChannel;
+  whatsapp: MessageProcessingWhatsAppChannel;
   state: RuntimeState;
   assistantName: string;
   triggerPattern: RegExp;

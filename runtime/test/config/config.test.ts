@@ -113,7 +113,7 @@ test("loads config-file aliases for pushover and identity fields", () => {
     expect(snapshot.USER_NAME).toBe("Casey");
     expect(snapshot.USER_AVATAR).toBe("/user.png");
     expect(snapshot.USER_AVATAR_BACKGROUND).toBe("#123456");
-    expect(snapshot.WHATSAPP_CONFIG).toEqual({ phoneNumber: "+15551234567" });
+    expect(snapshot.WHATSAPP_CONFIG).toEqual({ enabled: false, phoneNumber: "+15551234567" });
   } finally {
     ws.cleanup();
   }
@@ -207,7 +207,7 @@ test("CLI workspace flag overrides env workspace and relocates derived state pat
     expect(snapshot.STORE_DIR).toBe(resolve(cliWs.workspace, ".piclaw", "store"));
     expect(snapshot.DATA_DIR).toBe(resolve(cliWs.workspace, ".piclaw", "data"));
     expect(snapshot.PICLAW_CONFIG_PATH).toBe(resolve(cliWs.workspace, ".piclaw", "config.json"));
-    expect(snapshot.WHATSAPP_CONFIG).toEqual({ phoneNumber: "+15550001111" });
+    expect(snapshot.WHATSAPP_CONFIG).toEqual({ enabled: false, phoneNumber: "+15550001111" });
   } finally {
     envWs.cleanup();
     cliWs.cleanup();
@@ -391,7 +391,7 @@ test("pushover config getter groups aliased config file settings", () => {
   }
 });
 
-test("whatsapp config getter groups the configured phone number", () => {
+test("whatsapp config getter groups the configured phone number and defaults disabled", () => {
   const ws = createTempWorkspace("piclaw-config-");
   try {
     writeWorkspaceConfig(ws.workspace, { whatsappPhone: "+15557654321" });
@@ -403,7 +403,27 @@ test("whatsapp config getter groups the configured phone number", () => {
     ]);
     expect(snapshot["same:getWhatsAppConfig:WHATSAPP_CONFIG"]).toBe(true);
     expect(snapshot["frozen:WHATSAPP_CONFIG"]).toBe(true);
-    expect(snapshot.WHATSAPP_CONFIG).toEqual({ phoneNumber: "+15557654321" });
+    expect(snapshot.WHATSAPP_CONFIG).toEqual({ enabled: false, phoneNumber: "+15557654321" });
+    expect(snapshot["call:getWhatsAppConfig"]).toEqual(snapshot.WHATSAPP_CONFIG);
+  } finally {
+    ws.cleanup();
+  }
+});
+
+test("whatsapp config requires explicit enablement", () => {
+  const ws = createTempWorkspace("piclaw-config-");
+  try {
+    writeWorkspaceConfig(ws.workspace, {
+      whatsapp: {
+        enabled: true,
+        phoneNumber: "+15557654321",
+      },
+    });
+    const snapshot = loadConfigInSubprocess(ws, [
+      "WHATSAPP_CONFIG",
+      "call:getWhatsAppConfig",
+    ]);
+    expect(snapshot.WHATSAPP_CONFIG).toEqual({ enabled: true, phoneNumber: "+15557654321" });
     expect(snapshot["call:getWhatsAppConfig"]).toEqual(snapshot.WHATSAPP_CONFIG);
   } finally {
     ws.cleanup();

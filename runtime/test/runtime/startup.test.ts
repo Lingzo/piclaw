@@ -120,6 +120,65 @@ describe("runtime startup helpers", () => {
     }
   });
 
+  test("createWhatsAppChannel is a no-op by default even when legacy phone config exists", () => {
+    const ws = createTempWorkspace("piclaw-startup-");
+
+    try {
+      const run = Bun.spawnSync({
+        cmd: [
+          TEST_SHELL,
+          "-lc",
+          "bun -e \"import { createWhatsAppChannel } from './src/runtime/startup.js'; const channel = createWhatsAppChannel({ chatJids: new Set(), saveChats() {} }); await channel.connect(); await channel.sendMessage('12345@s.whatsapp.net', 'hi'); console.log(JSON.stringify({ connected: channel.isConnected() }));\"",
+        ],
+        cwd: RUNTIME_DIR,
+        env: {
+          ...process.env,
+          PICLAW_WORKSPACE: ws.workspace,
+          PICLAW_STORE: ws.store,
+          PICLAW_DATA: ws.data,
+          PICLAW_DB_IN_MEMORY: "1",
+          PICLAW_DISABLE_BACKGROUND_WORKSPACE_INDEX: "1",
+          PICLAW_WHATSAPP_PHONE: "+15557654321",
+          PICLAW_WHATSAPP_ENABLED: "0",
+        },
+      });
+      expect(run.exitCode, run.stderr.toString() || run.stdout.toString()).toBe(0);
+      expect(JSON.parse(run.stdout.toString().trim().split("\n").at(-1) || "{}")).toEqual({ connected: false });
+    } finally {
+      ws.cleanup();
+    }
+  });
+
+  test("createWhatsAppChannel stays no-op when explicitly enabled without a phone", () => {
+    const ws = createTempWorkspace("piclaw-startup-");
+
+    try {
+      const run = Bun.spawnSync({
+        cmd: [
+          TEST_SHELL,
+          "-lc",
+          "bun -e \"import { createWhatsAppChannel } from './src/runtime/startup.js'; const channel = createWhatsAppChannel({ chatJids: new Set(), saveChats() {} }); await channel.connect(); console.log(JSON.stringify({ connected: channel.isConnected() }));\"",
+        ],
+        cwd: RUNTIME_DIR,
+        env: {
+          ...process.env,
+          PICLAW_WORKSPACE: ws.workspace,
+          PICLAW_STORE: ws.store,
+          PICLAW_DATA: ws.data,
+          PICLAW_DB_IN_MEMORY: "1",
+          PICLAW_DISABLE_BACKGROUND_WORKSPACE_INDEX: "1",
+          PICLAW_WHATSAPP_PHONE: "",
+          WHATSAPP_PHONE: "",
+          PICLAW_WHATSAPP_ENABLED: "1",
+        },
+      });
+      expect(run.exitCode, run.stderr.toString() || run.stdout.toString()).toBe(0);
+      expect(JSON.parse(run.stdout.toString().trim().split("\n").at(-1) || "{}")).toEqual({ connected: false });
+    } finally {
+      ws.cleanup();
+    }
+  });
+
   test("queueStartupResumePendingIpc writes a resume_pending task", () => {
     const ws = createTempWorkspace("piclaw-startup-");
 
