@@ -15,7 +15,6 @@ import {
   htmlViewerPaneExtension,
   videoViewerPaneExtension,
   mindmapPaneExtension,
-  kanbanPaneExtension,
 } from '../panes/index.js';
 import {
   installAddonWebApi,
@@ -68,7 +67,6 @@ export function registerAppPaneExtensions(): void {
   paneRegistry.register(htmlViewerPaneExtension);
   paneRegistry.register(videoViewerPaneExtension);
   paneRegistry.register(mindmapPaneExtension);
-  paneRegistry.register(kanbanPaneExtension);
   paneRegistry.register(vncPaneExtension);
   preloadEditorBundle();
   paneRegistry.register(terminalPaneExtension);
