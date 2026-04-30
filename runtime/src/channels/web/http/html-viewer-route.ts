@@ -2,8 +2,8 @@
  * html-viewer-route.ts — Authenticated HTML preview route.
  *
  * Serves an iframe-based HTML file viewer at /html-viewer/?path=...
- * Renders workspace HTML files in a sandboxed iframe without same-origin
- * privileges. Workspace HTML is treated as untrusted preview content.
+ * Renders workspace HTML files in a sandboxed iframe with same-origin
+ * script access (so vendored libs like Babylon.js/ECharts/D3 work).
  */
 
 import { registerExtensionRoute } from "./extension-routes.js";
@@ -50,7 +50,8 @@ export function generateHtmlViewerPage(): string {
     <button id="btnRefresh" title="Reload">↻ Refresh</button>
     <button id="btnNewTab" title="Open in new tab">↗ New Tab</button>
   </div>
-  <iframe id="frame" sandbox="allow-scripts allow-forms allow-popups"></iframe>
+  <!-- allow-same-origin is critical for dynamic HTML widgets/previews that load same-origin vendored/workspace assets. -->
+  <iframe id="frame" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
   <script>
   (function() {
     var params = new URLSearchParams(location.search);

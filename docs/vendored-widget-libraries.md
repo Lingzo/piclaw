@@ -1,9 +1,8 @@
 # Vendored widget libraries
 
 Interactive widgets posted via `send_dashboard_widget` run in a sandboxed iframe
-with `allow-scripts` but without `allow-same-origin`, so widget documents run in
-an opaque origin and communicate with the host through the `piclawWidget`
-postMessage bridge. The CSP allows inline scripts for the bridge/runtime.
+with `allow-scripts allow-same-origin`. The CSP allows inline scripts and
+same-origin script loading (`script-src 'unsafe-inline' 'self'`).
 
 The following libraries are vendored as static assets and available to any widget
 and to generated HTML artifacts from the `visual-artifact-generator` skill:
