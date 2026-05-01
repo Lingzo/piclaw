@@ -39,6 +39,7 @@ export interface GeneralSettingsData {
   userAvatarBackground: string;
   sessionAutoRotate: boolean;
   sessionMaxSizeMb: number;
+  sessionMaxLines: number;
   webTerminalEnabled: boolean;
   composeUploadLimitMb: number;
   workspaceUploadLimitMb: number;
@@ -64,6 +65,7 @@ export interface GeneralSettingsInput {
   userAvatar?: unknown;
   sessionAutoRotate?: unknown;
   sessionMaxSizeMb?: unknown;
+  sessionMaxLines?: unknown;
   webTerminalEnabled?: unknown;
   composeUploadLimitMb?: unknown;
   workspaceUploadLimitMb?: unknown;
@@ -132,6 +134,7 @@ export function getGeneralSettingsData(): GeneralSettingsData {
     userAvatarBackground: identity.userAvatarBackground || "",
     sessionAutoRotate: session.autoRotate,
     sessionMaxSizeMb: session.maxSizeMb,
+    sessionMaxLines: session.maxLines,
     webTerminalEnabled: web.terminalEnabled,
     composeUploadLimitMb: web.composeUploadLimitMb,
     workspaceUploadLimitMb: web.workspaceUploadLimitMb,
@@ -175,10 +178,14 @@ export async function saveGeneralSettings(input: GeneralSettingsInput): Promise<
     }
   }
 
-  const sessionPatch: { maxSizeMb?: number; autoRotate?: boolean } = {};
+  const sessionPatch: { maxSizeMb?: number; maxLines?: number; autoRotate?: boolean } = {};
   const nextSessionMaxSizeMb = normalizeOptionalInt(input.sessionMaxSizeMb, 1, 256);
   if (nextSessionMaxSizeMb !== undefined) {
     sessionPatch.maxSizeMb = nextSessionMaxSizeMb;
+  }
+  const nextSessionMaxLines = normalizeOptionalInt(input.sessionMaxLines, 100, 50000);
+  if (nextSessionMaxLines !== undefined) {
+    sessionPatch.maxLines = nextSessionMaxLines;
   }
   const nextSessionAutoRotate = normalizeOptionalBoolean(input.sessionAutoRotate);
   if (nextSessionAutoRotate !== undefined) {

@@ -912,13 +912,16 @@ export function getSessionStorageConfig(): Readonly<SessionStorageConfig> {
 }
 
 /** Persist and apply session storage settings so new turns use them immediately. */
-export function setSessionStorageConfig(patch: { maxSizeMb?: number; autoRotate?: boolean }): Readonly<SessionStorageConfig> {
+export function setSessionStorageConfig(patch: { maxSizeMb?: number; maxLines?: number; autoRotate?: boolean }): Readonly<SessionStorageConfig> {
   const nextMaxSizeMb = Number.isFinite(patch.maxSizeMb)
     ? Math.min(256, Math.max(1, Math.round(Number(patch.maxSizeMb))))
     : SESSION_STORAGE_CONFIG.maxSizeMb;
   const nextAutoRotate = typeof patch.autoRotate === "boolean"
     ? patch.autoRotate
     : SESSION_STORAGE_CONFIG.autoRotate;
+  const nextMaxLines = Number.isFinite(patch.maxLines)
+    ? Math.min(50000, Math.max(100, Math.round(Number(patch.maxLines))))
+    : SESSION_STORAGE_CONFIG.maxLines;
 
   const config = readJsonConfig(getConfigPath());
   const clearRootKeys = [
@@ -934,15 +937,18 @@ export function setSessionStorageConfig(patch: { maxSizeMb?: number; autoRotate?
   }
   config.sessionMaxSizeMb = nextMaxSizeMb;
   config.sessionAutoRotate = nextAutoRotate;
+  config.sessionMaxLines = nextMaxLines;
   writeJsonConfig(getConfigPath(), config);
 
   process.env.PICLAW_SESSION_MAX_SIZE_MB = String(nextMaxSizeMb);
   process.env.PICLAW_SESSION_AUTO_ROTATE = nextAutoRotate ? "1" : "0";
+  process.env.PICLAW_SESSION_MAX_LINES = String(nextMaxLines);
 
   SESSION_STORAGE_CONFIG = Object.freeze<SessionStorageConfig>({
     ...SESSION_STORAGE_CONFIG,
     maxSizeMb: nextMaxSizeMb,
     maxSizeBytes: nextMaxSizeMb * 1024 * 1024,
+    maxLines: nextMaxLines,
     autoRotate: nextAutoRotate,
   });
   return SESSION_STORAGE_CONFIG;

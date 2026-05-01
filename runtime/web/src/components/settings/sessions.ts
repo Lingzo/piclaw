@@ -8,15 +8,17 @@ import { NumberStepper } from './number-stepper.js';
 function normalizeSessionSettings(data = {}) {
     return {
         sessionAutoRotate: data.sessionAutoRotate !== false,
-        sessionMaxSizeMb: data.sessionMaxSizeMb ?? 32,
-        toolUseBudget: data.toolUseBudget ?? 64,
+        sessionMaxSizeMb: data.sessionMaxSizeMb ?? 16,
+        sessionMaxLines: data.sessionMaxLines ?? 4000,
         sessionIsolation: data.sessionIsolation || 'none',
+        toolUseBudget: data.toolUseBudget ?? 64,
     };
 }
 
 export function SessionsSection({ settingsData, setStatus, mergeSettingsData }) {
     const [sessionAutoRotate, setSessionAutoRotate] = useState(true);
-    const [sessionMaxSizeMb, setSessionMaxSizeMb] = useState(32);
+    const [sessionMaxSizeMb, setSessionMaxSizeMb] = useState(16);
+    const [sessionMaxLines, setSessionMaxLines] = useState(4000);
     const [toolUseBudget, setToolUseBudget] = useState(64);
     const [sessionIsolation, setSessionIsolation] = useState('none');
     const [appliedHint, setAppliedHint] = useState(false);
@@ -33,6 +35,7 @@ export function SessionsSection({ settingsData, setStatus, mergeSettingsData }) 
         const next = normalizeSessionSettings(data);
         setSessionAutoRotate(next.sessionAutoRotate);
         setSessionMaxSizeMb(next.sessionMaxSizeMb);
+        setSessionMaxLines(next.sessionMaxLines);
         setToolUseBudget(next.toolUseBudget);
         setSessionIsolation(next.sessionIsolation);
         savedSnapshotRef.current = JSON.stringify(next);
@@ -43,8 +46,8 @@ export function SessionsSection({ settingsData, setStatus, mergeSettingsData }) 
     }, [settingsData, applyIncoming]);
 
     const currentSnapshot = useMemo(() => JSON.stringify(normalizeSessionSettings({
-        sessionAutoRotate, sessionMaxSizeMb, toolUseBudget, sessionIsolation,
-    })), [sessionAutoRotate, sessionMaxSizeMb, toolUseBudget, sessionIsolation]);
+        sessionAutoRotate, sessionMaxSizeMb, sessionMaxLines, toolUseBudget, sessionIsolation,
+    })), [sessionAutoRotate, sessionMaxSizeMb, sessionMaxLines, toolUseBudget, sessionIsolation]);
 
     useEffect(() => {
         if (currentSnapshot === savedSnapshotRef.current) return;
