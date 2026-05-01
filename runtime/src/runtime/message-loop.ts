@@ -19,6 +19,8 @@
 import type { AgentPool } from "../agent-pool.js";
 import { formatRecoverySummary } from "../agent-pool/automatic-recovery.js";
 import { parseControlCommand, type AgentControlCommand } from "../agent-control/index.js";
+import { stripTrigger } from "../agent-control/parser-utils.js";
+import { isSlashCommandInvocation } from "../agent-pool/slash-command.js";
 import { getMessagesSince, getNewMessages } from "../db.js";
 import type { AgentQueue } from "../queue.js";
 import { detectChannel, formatMessages, formatOutbound } from "../router.js";
@@ -83,18 +85,9 @@ export async function processMessages(chatJid: string, deps: MessageProcessingDe
     deps.state.saveTimestamps();
   };
 
-  const stripTrigger = (text: string): string => {
-    if (!text) return "";
-    const flags = deps.triggerPattern.flags.includes("g")
-      ? deps.triggerPattern.flags
-      : `${deps.triggerPattern.flags}g`;
-    const pattern = new RegExp(deps.triggerPattern.source, flags);
-    return text.replace(pattern, " ").trim();
-  };
-
   const lastPrompt = promptMessages[promptMessages.length - 1];
-  const cleaned = lastPrompt ? stripTrigger(lastPrompt.content) : "";
-  if (promptMessages.length === 1 && cleaned.startsWith("/")) {
+  const cleaned = lastPrompt ? stripTrigger(lastPrompt.content, deps.triggerPattern) : "";
+  if (promptMessages.length === 1 && isSlashCommandInvocation(cleaned)) {
     log.info("Executing slash command", {
       operation: "process_messages.slash_command",
       chatJid,

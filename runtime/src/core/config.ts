@@ -877,6 +877,10 @@ export interface CompactionRuntimeConfig {
   backoffMaxMs: number;
   progressWatchdogEnabled: boolean;
   progressWatchdogTimeoutMs: number;
+  /** Context utilization % at which auto-compaction triggers (0-100). Default 50. */
+  thresholdPercent: number;
+  /** Multiplier applied to backoff duration after a successful compaction (0-1). Default 0.5. */
+  backoffDecayFactor: number;
 }
 
 const sessionMaxSizeMb =
@@ -1005,6 +1009,8 @@ let COMPACTION_RUNTIME_CONFIG: CompactionRuntimeConfig = Object.seal({
   progressWatchdogTimeoutMs: Number.isFinite(configProgressWatchdogTimeoutMs)
     ? Math.max(0, Math.round(Number(configProgressWatchdogTimeoutMs)))
     : DEFAULT_PROGRESS_WATCHDOG_TIMEOUT_MS,
+  thresholdPercent: 50,
+  backoffDecayFactor: 0.5,
 });
 
 function parseOptionalBooleanFlag(value: unknown, fallback: boolean): boolean {
@@ -1043,6 +1049,8 @@ export function getCompactionRuntimeConfig(): Readonly<CompactionRuntimeConfig> 
       process.env.PICLAW_PROGRESS_WATCHDOG_TIMEOUT_MS,
       COMPACTION_RUNTIME_CONFIG.progressWatchdogTimeoutMs,
     ),
+    thresholdPercent: COMPACTION_RUNTIME_CONFIG.thresholdPercent,
+    backoffDecayFactor: COMPACTION_RUNTIME_CONFIG.backoffDecayFactor,
   });
 }
 
@@ -1052,6 +1060,8 @@ export function setCompactionRuntimeConfig(patch: {
   backoffMaxMs?: number;
   progressWatchdogEnabled?: boolean;
   progressWatchdogTimeoutMs?: number;
+  thresholdPercent?: number;
+  backoffDecayFactor?: number;
 }): Readonly<CompactionRuntimeConfig> {
   const current = getCompactionRuntimeConfig();
   const next: CompactionRuntimeConfig = {
@@ -1064,6 +1074,12 @@ export function setCompactionRuntimeConfig(patch: {
     progressWatchdogTimeoutMs: patch.progressWatchdogTimeoutMs === undefined
       ? current.progressWatchdogTimeoutMs
       : parseOptionalNonNegativeDurationMs(patch.progressWatchdogTimeoutMs, current.progressWatchdogTimeoutMs),
+    thresholdPercent: typeof patch.thresholdPercent === "number" && patch.thresholdPercent > 0 && patch.thresholdPercent <= 100
+      ? patch.thresholdPercent
+      : current.thresholdPercent,
+    backoffDecayFactor: typeof patch.backoffDecayFactor === "number" && patch.backoffDecayFactor > 0 && patch.backoffDecayFactor <= 1
+      ? patch.backoffDecayFactor
+      : current.backoffDecayFactor,
   };
 
   if (next.backoffMaxMs < next.backoffBaseMs) {

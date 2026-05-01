@@ -16,6 +16,7 @@ import {
   setUiThemeConfig,
 } from "../../../core/config.js";
 import { parseControlCommand } from "../../../agent-control/index.js";
+import { isSlashCommandInvocation } from "../../../agent-pool/slash-command.js";
 import {
   normalizeAgentMessagePayload,
   parseAgentMessageRequest,
@@ -1094,8 +1095,9 @@ export async function handleAgentMessage(
     );
   }
 
-  // If message looks like an extension slash command (starts with "/"), execute it directly
-  if (trimmed.startsWith("/")) {
+  // If message looks like a slash command invocation, execute it directly.
+  // Paths such as /workspace/piclaw or prose that merely mention /commands stay normal prompts.
+  if (isSlashCommandInvocation(trimmed)) {
     broadcastNewPost();
     const commandTurnId = createUuid("turn");
     const slashName = trimmed.split(/\s+/, 1)[0] || "/command";

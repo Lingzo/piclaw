@@ -69,9 +69,14 @@ function parseSlashCommand(rawText: string): { trimmed: string; rawCommand: stri
   if (!trimmed.startsWith("/")) return null;
 
   const rawCommand = trimmed.slice(1);
-  const spaceIndex = rawCommand.indexOf(" ");
-  const commandName = spaceIndex === -1 ? rawCommand : rawCommand.slice(0, spaceIndex);
+  const argIndex = rawCommand.search(/\s/);
+  const commandName = argIndex === -1 ? rawCommand : rawCommand.slice(0, argIndex);
+  if (!/^[A-Za-z0-9][A-Za-z0-9:_-]*$/.test(commandName)) return null;
   return { trimmed, rawCommand, commandName };
+}
+
+export function isSlashCommandInvocation(rawText: string): boolean {
+  return parseSlashCommand(rawText) !== null;
 }
 
 function resolveSlashCommandKind(

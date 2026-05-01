@@ -266,8 +266,10 @@ function getAutoCompactionContext(session: AgentSession, chatJid: string, option
   if (!settings) return null;
 
   const contextTokens = estimateContextTokensFromSession(session);
-  const reserveTokens = settings.reserveTokens ?? 16384;
-  if (contextTokens <= contextWindow - reserveTokens) return null;
+  const compactionConfig = getCompactionRuntimeConfig();
+  const thresholdTokens = Math.floor(contextWindow * (compactionConfig.thresholdPercent / 100));
+  const reserveTokens = contextWindow - thresholdTokens;
+  if (contextTokens <= thresholdTokens) return null;
 
   return { contextTokens, contextWindow, reserveTokens };
 }

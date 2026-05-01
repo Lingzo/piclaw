@@ -37,6 +37,7 @@
  * - GH_TOKEN
  */
 
+import Database from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import * as YAML from "js-yaml";
@@ -55,12 +56,15 @@ type RepoRecord = {
 };
 
 type IssueApiRecord = {
+  id?: number;
+  node_id?: string;
   number: number;
   title: string;
   state: string;
   html_url: string;
   created_at: string;
   updated_at: string;
+  closed_at?: string | null;
   user?: { login?: string } | null;
   labels?: Array<{ name?: string } | null>;
   assignees?: Array<{ login?: string } | null>;
@@ -69,6 +73,8 @@ type IssueApiRecord = {
 };
 
 type PullApiRecord = {
+  id?: number;
+  node_id?: string;
   number: number;
   title: string;
   state: string;
@@ -76,6 +82,8 @@ type PullApiRecord = {
   html_url: string;
   created_at: string;
   updated_at: string;
+  closed_at?: string | null;
+  merged_at?: string | null;
   user?: { login?: string } | null;
   labels?: Array<{ name?: string } | null>;
   assignees?: Array<{ login?: string } | null>;
@@ -90,6 +98,8 @@ type CollatedItem = {
   repo_private: boolean;
   repo_archived: boolean;
   type: "issue" | "pull_request";
+  github_id?: number;
+  node_id?: string;
   number: number;
   title: string;
   state: string;
@@ -98,11 +108,14 @@ type CollatedItem = {
   author: string;
   created_at: string;
   updated_at: string;
+  closed_at: string | null;
+  merged_at: string | null;
   labels: string[];
   assignees: string[];
   body_preview: string;
   head_ref?: string;
   base_ref?: string;
+  raw_json?: string;
 };
 
 type RepoSummary = {
@@ -159,6 +172,17 @@ type RepoTrend = {
   points: HistorySnapshot[];
 };
 
+type CollectedRepo = {
+  repo: RepoSummary;
+  all_items: CollatedItem[];
+  items: CollatedItem[];
+};
+
+type SyncRunRowResult = {
+  id: number;
+  started_at: string;
+};
+
 type Report = {
   generated_at: string;
   state: "open" | "closed" | "all";
@@ -186,6 +210,7 @@ type Options = {
   outputJson?: string;
   outputMarkdown?: string;
   historyYaml?: string;
+  dbPath: string;
   includeArchived: boolean;
   includeForks: boolean;
   includePrivate: boolean;
@@ -198,6 +223,7 @@ type Options = {
 
 const DEFAULT_HISTORY_POINTS = 120;
 const DEFAULT_CHART_POINTS = 30;
+const DEFAULT_DB_PATH = "/workspace/.piclaw/analytics/github-metrics.sqlite";
 
 function readOption(argv: string[], name: string): string | undefined {
   const index = argv.indexOf(name);
@@ -219,6 +245,7 @@ function readOptions(argv: string[]): Options {
   const outputJson = readOption(argv, "--output-json");
   const outputMarkdown = readOption(argv, "--output-markdown");
   const historyYaml = readOption(argv, "--history-yaml");
+  const dbPath = resolve(readOption(argv, "--db-path") || DEFAULT_DB_PATH);
   const includeArchived = argv.includes("--include-archived");
   const includeForks = argv.includes("--include-forks");
   const includePrivate = argv.includes("--include-private");
@@ -239,6 +266,7 @@ function readOptions(argv: string[]): Options {
     outputJson,
     outputMarkdown,
     historyYaml,
+    dbPath,
     includeArchived,
     includeForks,
     includePrivate,
@@ -359,17 +387,22 @@ function normalizeIssue(repo: RepoRecord, record: IssueApiRecord): CollatedItem 
     repo_private: repo.private,
     repo_archived: repo.archived,
     type: "issue",
+    github_id: normalizeNumber(record.id),
+    node_id: normalizeString(record.node_id) || undefined,
     number: record.number,
     title: String(record.title || "").trim(),
-    state: String(record.state || "").trim(),
+    state: String(record.state || "").trim() || "open",
     draft: false,
     url: String(record.html_url || "").trim(),
     author: String(record.user?.login || "").trim(),
-    created_at: String(record.created_at || "").trim(),
-    updated_at: String(record.updated_at || "").trim(),
+    created_at: normalizeIsoOrNull(record.created_at) || new Date(0).toISOString(),
+    updated_at: normalizeIsoOrNull(record.updated_at) || normalizeIsoOrNull(record.created_at) || new Date(0).toISOString(),
+    closed_at: normalizeIsoOrNull(record.closed_at),
+    merged_at: null,
     labels: labelNames(record.labels),
     assignees: assigneeNames(record.assignees),
     body_preview: previewBody(record.body),
+    raw_json: JSON.stringify(record),
   };
 }
 
@@ -380,19 +413,24 @@ function normalizePull(repo: RepoRecord, record: PullApiRecord): CollatedItem {
     repo_private: repo.private,
     repo_archived: repo.archived,
     type: "pull_request",
+    github_id: normalizeNumber(record.id),
+    node_id: normalizeString(record.node_id) || undefined,
     number: record.number,
     title: String(record.title || "").trim(),
-    state: String(record.state || "").trim(),
+    state: String(record.state || "").trim() || "open",
     draft: Boolean(record.draft),
     url: String(record.html_url || "").trim(),
     author: String(record.user?.login || "").trim(),
-    created_at: String(record.created_at || "").trim(),
-    updated_at: String(record.updated_at || "").trim(),
+    created_at: normalizeIsoOrNull(record.created_at) || new Date(0).toISOString(),
+    updated_at: normalizeIsoOrNull(record.updated_at) || normalizeIsoOrNull(record.created_at) || new Date(0).toISOString(),
+    closed_at: normalizeIsoOrNull(record.closed_at),
+    merged_at: normalizeIsoOrNull(record.merged_at),
     labels: labelNames(record.labels),
     assignees: assigneeNames(record.assignees),
     body_preview: previewBody(record.body),
     head_ref: String(record.head?.ref || "").trim() || undefined,
     base_ref: String(record.base?.ref || "").trim() || undefined,
+    raw_json: JSON.stringify(record),
   };
 }
 
@@ -404,6 +442,16 @@ function normalizeNumber(value: unknown): number {
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+function normalizeIsoOrNull(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function ownerFromFullName(fullName: string): string {
+  return String(fullName || "").split("/")[0] || "";
 }
 
 function escapeCell(value: string): string {
@@ -618,20 +666,29 @@ function renderMarkdown(report: Report, trends: RepoTrend[], chartPoints: number
     }
   }
 
+  const stateSummary = [
+    `State filter: ${escapeCell(report.state)}`,
+    ...(report.recent_activity_hours ? [`Activity window: last ${report.recent_activity_hours}h by created/updated time`] : []),
+    `Included private repos: ${report.include_private ? "yes" : "no"}`,
+  ];
+  const countSummary = [
+    `Repos scanned: **${report.totals.repos_scanned}**`,
+    `Repos with items: **${report.totals.repos_with_items}**`,
+    `Total items: **${report.totals.total_items}**`,
+    `Issues: **${report.totals.total_issues}**`,
+    `Pull requests: **${report.totals.total_pull_requests}**`,
+    `Repos with star movement: **${report.totals.repos_with_star_changes}**`,
+    `Repos with new stars: **${report.totals.repos_with_star_gains}**`,
+  ];
+  const summaryRows = Math.max(countSummary.length, stateSummary.length);
+
   lines.push("## Summary");
   lines.push("");
-  lines.push(`- State filter: \`${report.state}\``);
-  if (report.recent_activity_hours) {
-    lines.push(`- Activity window: **last ${report.recent_activity_hours}h** by created/updated time`);
+  lines.push("| Counts | State |");
+  lines.push("|---|---|");
+  for (let index = 0; index < summaryRows; index += 1) {
+    lines.push(`| ${escapeCell(countSummary[index] || "")} | ${escapeCell(stateSummary[index] || "")} |`);
   }
-  lines.push(`- Repos scanned: **${report.totals.repos_scanned}**`);
-  lines.push(`- Included private repos: **${report.include_private ? "yes" : "no"}**`);
-  lines.push(`- Repos with items: **${report.totals.repos_with_items}**`);
-  lines.push(`- Total items: **${report.totals.total_items}**`);
-  lines.push(`- Issues: **${report.totals.total_issues}**`);
-  lines.push(`- Pull requests: **${report.totals.total_pull_requests}**`);
-  lines.push(`- Repos with star movement: **${report.totals.repos_with_star_changes}**`);
-  lines.push(`- Repos with new stars: **${report.totals.repos_with_star_gains}**`);
   lines.push("");
 
   if (report.repos.length > 0) {
@@ -851,6 +908,273 @@ function upsertRepoHistory(
   return updated.sort((a, b) => a.full_name.localeCompare(b.full_name));
 }
 
+export function initAnalyticsDb(db: Database): void {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+    PRAGMA busy_timeout = 5000;
+
+    CREATE TABLE IF NOT EXISTS repos (
+      id INTEGER PRIMARY KEY,
+      full_name TEXT NOT NULL UNIQUE,
+      html_url TEXT NOT NULL DEFAULT '',
+      owner_login TEXT NOT NULL DEFAULT '',
+      is_private INTEGER NOT NULL DEFAULT 0,
+      is_archived INTEGER NOT NULL DEFAULT 0,
+      is_fork INTEGER NOT NULL DEFAULT 0,
+      default_branch TEXT NOT NULL DEFAULT '',
+      meta_json TEXT NOT NULL DEFAULT '{}',
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS items (
+      id INTEGER PRIMARY KEY,
+      repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+      github_id INTEGER,
+      node_id TEXT,
+      number INTEGER NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('issue', 'pull_request')),
+      title TEXT NOT NULL,
+      state TEXT NOT NULL,
+      draft INTEGER NOT NULL DEFAULT 0,
+      author TEXT NOT NULL DEFAULT '',
+      html_url TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      closed_at TEXT,
+      merged_at TEXT,
+      labels_json TEXT NOT NULL DEFAULT '[]',
+      assignees_json TEXT NOT NULL DEFAULT '[]',
+      raw_json TEXT NOT NULL DEFAULT '{}',
+      last_seen_at TEXT NOT NULL,
+      UNIQUE(repo_id, kind, number)
+    );
+
+    CREATE TABLE IF NOT EXISTS repo_snapshots (
+      id INTEGER PRIMARY KEY,
+      repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+      collected_at TEXT NOT NULL,
+      stars INTEGER NOT NULL DEFAULT 0,
+      open_issues INTEGER NOT NULL DEFAULT 0,
+      open_prs INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'sync',
+      snapshot_json TEXT NOT NULL DEFAULT '{}',
+      UNIQUE(repo_id, collected_at)
+    );
+
+    CREATE TABLE IF NOT EXISTS sync_runs (
+      id INTEGER PRIMARY KEY,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      status TEXT NOT NULL DEFAULT 'running',
+      scope_json TEXT NOT NULL DEFAULT '{}',
+      result_json TEXT,
+      error_text TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_items_repo_kind_created ON items(repo_id, kind, created_at);
+    CREATE INDEX IF NOT EXISTS idx_items_kind_created ON items(kind, created_at);
+    CREATE INDEX IF NOT EXISTS idx_items_kind_closed ON items(kind, closed_at);
+    CREATE INDEX IF NOT EXISTS idx_items_kind_merged ON items(kind, merged_at);
+    CREATE INDEX IF NOT EXISTS idx_repo_snapshots_repo_time ON repo_snapshots(repo_id, collected_at);
+
+    CREATE VIEW IF NOT EXISTS daily_item_opened AS
+    SELECT
+      repo_id,
+      date(created_at) AS day,
+      SUM(CASE WHEN kind = 'issue' THEN 1 ELSE 0 END) AS issues_opened,
+      SUM(CASE WHEN kind = 'pull_request' THEN 1 ELSE 0 END) AS prs_opened
+    FROM items
+    GROUP BY repo_id, date(created_at);
+
+    CREATE VIEW IF NOT EXISTS daily_item_closed AS
+    SELECT
+      repo_id,
+      date(closed_at) AS day,
+      SUM(CASE WHEN kind = 'issue' THEN 1 ELSE 0 END) AS issues_closed,
+      SUM(CASE WHEN kind = 'pull_request' THEN 1 ELSE 0 END) AS prs_closed
+    FROM items
+    WHERE closed_at IS NOT NULL
+    GROUP BY repo_id, date(closed_at);
+
+    CREATE VIEW IF NOT EXISTS daily_pr_merged AS
+    SELECT
+      repo_id,
+      date(merged_at) AS day,
+      COUNT(*) AS prs_merged
+    FROM items
+    WHERE kind = 'pull_request' AND merged_at IS NOT NULL
+    GROUP BY repo_id, date(merged_at);
+  `);
+}
+
+function openAnalyticsDb(dbPath: string): Database {
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const db = new Database(dbPath);
+  initAnalyticsDb(db);
+  return db;
+}
+
+function upsertRepoRow(db: Database, repo: RepoSummary, seenAt: string, metaJson = "{}"): number {
+  db.query(`
+    INSERT INTO repos (
+      full_name, html_url, owner_login, is_private, is_archived, is_fork, default_branch, meta_json, first_seen_at, last_seen_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(full_name) DO UPDATE SET
+      html_url = excluded.html_url,
+      owner_login = excluded.owner_login,
+      is_private = excluded.is_private,
+      is_archived = excluded.is_archived,
+      is_fork = excluded.is_fork,
+      default_branch = excluded.default_branch,
+      meta_json = excluded.meta_json,
+      last_seen_at = excluded.last_seen_at
+  `).run(
+    repo.full_name,
+    repo.html_url || "",
+    ownerFromFullName(repo.full_name),
+    Number(Boolean(repo.private)),
+    Number(Boolean(repo.archived)),
+    Number(Boolean(repo.fork)),
+    repo.default_branch || "",
+    metaJson,
+    seenAt,
+    seenAt,
+  );
+  const row = db.query(`SELECT id FROM repos WHERE full_name = ?`).get(repo.full_name) as { id: number } | null;
+  if (!row) throw new Error(`Failed to upsert repo row for ${repo.full_name}`);
+  return row.id;
+}
+
+function importLegacyHistoryIntoDb(db: Database, history: RepoMetricsHistory, historyYamlPath: string): number {
+  let inserted = 0;
+  for (const repo of history.repos) {
+    const repoId = upsertRepoRow(db, {
+      full_name: repo.full_name,
+      html_url: repo.html_url,
+      private: repo.private,
+      archived: repo.archived,
+      fork: repo.fork,
+      default_branch: repo.default_branch,
+      stars: repo.points.at(-1)?.stars ?? 0,
+      issues: repo.points.at(-1)?.issues ?? 0,
+      pull_requests: repo.points.at(-1)?.pull_requests ?? 0,
+      total: (repo.points.at(-1)?.issues ?? 0) + (repo.points.at(-1)?.pull_requests ?? 0),
+    }, history.generated_at || new Date().toISOString(), JSON.stringify({ imported_from: historyYamlPath, imported_version: history.version }));
+
+    for (const point of repo.points) {
+      const before = db.query(`SELECT 1 AS ok FROM repo_snapshots WHERE repo_id = ? AND collected_at = ?`).get(repoId, point.at) as { ok: number } | null;
+      db.query(`
+        INSERT INTO repo_snapshots (
+          repo_id, collected_at, stars, open_issues, open_prs, source, snapshot_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(repo_id, collected_at) DO UPDATE SET
+          stars = excluded.stars,
+          open_issues = excluded.open_issues,
+          open_prs = excluded.open_prs,
+          source = excluded.source,
+          snapshot_json = excluded.snapshot_json
+      `).run(
+        repoId,
+        point.at,
+        point.stars,
+        point.issues,
+        point.pull_requests,
+        "legacy_yaml",
+        JSON.stringify({ deltas: point.deltas, imported_from: historyYamlPath }),
+      );
+      if (!before) inserted += 1;
+    }
+  }
+  return inserted;
+}
+
+function syncRepoToDb(db: Database, result: CollectedRepo, collectedAt: string): void {
+  const openIssues = result.all_items.filter((item) => item.type === "issue" && item.state === "open").length;
+  const openPullRequests = result.all_items.filter((item) => item.type === "pull_request" && item.state === "open").length;
+  const repoId = upsertRepoRow(db, result.repo, collectedAt, JSON.stringify({ synced_by: "github-collate-issues-prs.ts" }));
+
+  const tx = db.transaction((items: CollatedItem[]) => {
+    for (const item of items) {
+      db.query(`
+        INSERT INTO items (
+          repo_id, github_id, node_id, number, kind, title, state, draft, author, html_url,
+          created_at, updated_at, closed_at, merged_at, labels_json, assignees_json, raw_json, last_seen_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(repo_id, kind, number) DO UPDATE SET
+          github_id = excluded.github_id,
+          node_id = excluded.node_id,
+          title = excluded.title,
+          state = excluded.state,
+          draft = excluded.draft,
+          author = excluded.author,
+          html_url = excluded.html_url,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at,
+          closed_at = excluded.closed_at,
+          merged_at = excluded.merged_at,
+          labels_json = excluded.labels_json,
+          assignees_json = excluded.assignees_json,
+          raw_json = excluded.raw_json,
+          last_seen_at = excluded.last_seen_at
+      `).run(
+        repoId,
+        item.github_id || null,
+        item.node_id || null,
+        item.number,
+        item.type,
+        item.title,
+        item.state,
+        Number(item.draft),
+        item.author,
+        item.url,
+        item.created_at,
+        item.updated_at,
+        item.closed_at,
+        item.merged_at,
+        JSON.stringify(item.labels),
+        JSON.stringify(item.assignees),
+        item.raw_json || "{}",
+        collectedAt,
+      );
+    }
+
+    db.query(`
+      INSERT INTO repo_snapshots (
+        repo_id, collected_at, stars, open_issues, open_prs, source, snapshot_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(repo_id, collected_at) DO UPDATE SET
+        stars = excluded.stars,
+        open_issues = excluded.open_issues,
+        open_prs = excluded.open_prs,
+        source = excluded.source,
+        snapshot_json = excluded.snapshot_json
+    `).run(
+      repoId,
+      collectedAt,
+      result.repo.stars,
+      openIssues,
+      openPullRequests,
+      "sync",
+      JSON.stringify({ total_items_seen: result.all_items.length, report_items: result.items.length }),
+    );
+  });
+
+  tx(result.all_items);
+}
+
+function startSyncRun(db: Database, startedAt: string, scope: Record<string, unknown>): SyncRunRowResult {
+  db.query(`INSERT INTO sync_runs (started_at, status, scope_json) VALUES (?, 'running', ?)`).run(startedAt, JSON.stringify(scope));
+  const row = db.query(`SELECT last_insert_rowid() AS id`).get() as { id: number } | null;
+  return { id: row?.id ?? 0, started_at: startedAt };
+}
+
+function finishSyncRun(db: Database, run: SyncRunRowResult, finishedAt: string, result: unknown): void {
+  if (!run.id) return;
+  db.query(`UPDATE sync_runs SET finished_at = ?, status = 'ok', result_json = ? WHERE id = ?`).run(finishedAt, JSON.stringify(result), run.id);
+}
+
 async function mapWithConcurrency<T, R>(
   values: readonly T[],
   concurrency: number,
@@ -880,37 +1204,45 @@ function isRecentlyActive(item: CollatedItem, nowMs: number, activeWithinHours?:
   return createdMs >= cutoff || updatedMs >= cutoff;
 }
 
+function toOutputItem(item: CollatedItem): CollatedItem {
+  const { github_id, node_id, closed_at, merged_at, raw_json, ...output } = item;
+  return output as CollatedItem;
+}
+
 async function collectRepoItems(
   token: string,
   repo: RepoRecord,
   state: Options["state"],
   activeWithinHours?: number,
   nowMs = Date.now(),
-): Promise<{ repo: RepoSummary; items: CollatedItem[] }> {
+): Promise<CollectedRepo> {
   const [owner = "", name = ""] = String(repo.full_name || "").split("/");
   if (!owner || !name) {
     throw new Error(`Invalid GitHub repo full_name: ${repo.full_name}`);
   }
-  const issuesUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues?state=${state}&per_page=100`;
-  const pullsUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls?state=${state}&per_page=100`;
+  const issuesUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues?state=all&per_page=100`;
+  const pullsUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls?state=all&per_page=100`;
 
   const [issueRecords, pullRecords] = await Promise.all([
     fetchAllPagesAllowEmptyOnNotFound<IssueApiRecord>(token, issuesUrl),
     fetchAllPagesAllowEmptyOnNotFound<PullApiRecord>(token, pullsUrl),
   ]);
 
-  const items = [
+  const allItems = [
     ...issueRecords.map((record) => normalizeIssue(repo, record)).filter((record): record is CollatedItem => Boolean(record)),
     ...pullRecords.map((record) => normalizePull(repo, record)),
-  ]
-    .filter((item) => isRecentlyActive(item, nowMs, activeWithinHours))
-    .sort((left, right) => {
-      const leftTs = Date.parse(left.updated_at) || 0;
-      const rightTs = Date.parse(right.updated_at) || 0;
-      if (rightTs !== leftTs) return rightTs - leftTs;
-      if (left.repo !== right.repo) return left.repo.localeCompare(right.repo);
-      return left.number - right.number;
-    });
+  ].sort((left, right) => {
+    const leftTs = Date.parse(left.updated_at) || 0;
+    const rightTs = Date.parse(right.updated_at) || 0;
+    if (rightTs !== leftTs) return rightTs - leftTs;
+    if (left.repo !== right.repo) return left.repo.localeCompare(right.repo);
+    if (left.type !== right.type) return left.type.localeCompare(right.type);
+    return left.number - right.number;
+  });
+
+  const items = allItems
+    .filter((item) => state === "all" || item.state === state)
+    .filter((item) => isRecentlyActive(item, nowMs, activeWithinHours));
 
   return {
     repo: {
@@ -925,6 +1257,7 @@ async function collectRepoItems(
       pull_requests: items.filter((item) => item.type === "pull_request").length,
       total: items.length,
     },
+    all_items: allItems,
     items,
   };
 }
@@ -995,6 +1328,19 @@ async function main(): Promise<void> {
     });
 
   const history = loadHistory(historyYaml);
+  const db = openAnalyticsDb(options.dbPath);
+  const legacySnapshotsImported = importLegacyHistoryIntoDb(db, history, historyYaml);
+  const syncRun = startSyncRun(db, generatedAt, {
+    state: options.state,
+    include_archived: options.includeArchived,
+    include_forks: options.includeForks,
+    include_private: options.includePrivate,
+    owner_filters: options.ownerFilters,
+    recent_activity_hours: options.activeWithinHours ?? null,
+    repos_scanned: filteredRepos.length,
+  });
+  for (const entry of perRepo) syncRepoToDb(db, entry, generatedAt);
+
   const trends = upsertRepoHistory(history, repoSummariesAll, generatedAt, options.historyPoints);
   const starChanges = trends.filter((trend) => trend.deltas.stars !== 0);
   const starGains = trends.filter((trend) => trend.deltas.stars > 0);
@@ -1017,7 +1363,7 @@ async function main(): Promise<void> {
       repos_with_star_gains: starGains.length,
     },
     repos: repoSummariesWithItems,
-    items,
+    items: items.map(toOutputItem),
   };
 
   const slug = timestampSlug();
@@ -1031,11 +1377,18 @@ async function main(): Promise<void> {
   writeFileSync(jsonPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   writeFileSync(markdownPath, `${markdown}\n`, "utf8");
   writeFileSync(historyYaml, `${YAML.dump(history, { lineWidth: 120, noRefs: true })}\n`, "utf8");
+  finishSyncRun(db, syncRun, new Date().toISOString(), {
+    ...report.totals,
+    legacy_snapshots_imported: legacySnapshotsImported,
+  });
+  db.close();
 
   console.log(JSON.stringify({
     json: jsonPath,
     markdown: markdownPath,
     history: historyYaml,
+    database: options.dbPath,
+    legacy_snapshots_imported: legacySnapshotsImported,
     totals: report.totals,
   }, null, 2));
 }

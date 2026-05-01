@@ -22,11 +22,17 @@ describe("parseControlCommand", () => {
     expect(parseControlCommand("no slash here")).toBeNull();
   });
 
-  test("strips trigger before parsing", () => {
+  test("strips leading trigger before parsing", () => {
     const trigger = /(?:^|\s)@PiClaw\b/i;
     const cmd = parseControlCommand("@PiClaw /model gpt-4", trigger);
     expect(cmd).not.toBeNull();
     expect(cmd!.type).toBe("model");
+  });
+
+  test("does not turn mid-prompt slash mentions into commands", () => {
+    const trigger = /(?:^|\s)@PiClaw\b/i;
+    expect(parseControlCommand("Please keep /model gpt-4 as literal text", trigger)).toBeNull();
+    expect(parseControlCommand("Please @PiClaw /model gpt-4 is an example", trigger)).toBeNull();
   });
 
   // /model

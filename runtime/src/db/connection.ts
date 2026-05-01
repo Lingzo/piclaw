@@ -479,6 +479,8 @@ function createSchema(database: Database): void {
       salt BLOB NOT NULL,
       kdf TEXT NOT NULL,
       kdf_iterations INTEGER NOT NULL,
+      user_note TEXT NOT NULL DEFAULT '',
+      agent_note TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
@@ -591,6 +593,24 @@ function ensureFts(database: Database): void {
  * Ensure the `model` column exists on `scheduled_tasks` (added in a later
  * version to allow per-task model overrides).
  */
+function ensureKeychainNoteColumns(database: Database): void {
+  const columns = database.prepare("PRAGMA table_info(keychain_entries)").all() as Array<{ name: string }>;
+  const existing = new Set(columns.map((col) => col.name));
+  const ensureColumn = (name: string) => {
+    if (existing.has(name)) return;
+    try {
+      database.exec(`ALTER TABLE keychain_entries ADD COLUMN ${name} TEXT NOT NULL DEFAULT ''`);
+    } catch (err) {
+      debugSuppressedError(log, "Keychain-note column migration raced an already-updated schema state.", err, {
+        operation: "db.ensure_keychain_note_columns.add_column",
+        name,
+      });
+    }
+  };
+  ensureColumn("user_note");
+  ensureColumn("agent_note");
+}
+
 function ensureScheduledTaskColumns(database: Database): void {
   const columns = database.prepare("PRAGMA table_info(scheduled_tasks)").all() as Array<{ name: string }>;
   const existing = new Set(columns.map((col) => col.name));
@@ -829,6 +849,7 @@ export function initDatabase(): void {
   createSchema(db);
   ensureChatBranchConstraints(db);
   ensureMessageColumns(db);
+  ensureKeychainNoteColumns(db);
   ensureScheduledTaskColumns(db);
   ensureWebSessionColumns(db);
   ensureFts(db);

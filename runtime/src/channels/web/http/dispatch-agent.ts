@@ -30,12 +30,13 @@ import {
 } from "../../../environment-overrides.js";
 import { PROVIDER_DEFS } from "../../../agent-control/provider-defs.js";
 import {
-  listKeychainEntries,
+  listKeychainEntriesForUi,
   getKeychainEntry,
   setKeychainEntry,
   deleteKeychainEntry,
   listInjectableKeychainEntries,
-  type KeychainEntryMetadata,
+  updateKeychainEntryNotes,
+  type KeychainEntryUiMetadata,
 } from "../../../secure/keychain.js";
 import {
   handleWebPushPresence,
@@ -433,13 +434,13 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
     path: "/agent/keychain",
     handle: (channel) => {
       try {
-        const entries = listKeychainEntries();
+        const entries = listKeychainEntriesForUi();
         const injectable = listInjectableKeychainEntries();
         const envMap: Record<string, string> = {};
         for (const { keychainName, envName } of injectable) {
           envMap[keychainName] = envName;
         }
-        const result = entries.map((e: KeychainEntryMetadata) => ({
+        const result = entries.map((e: KeychainEntryUiMetadata) => ({
           ...e,
           envVar: envMap[e.name] || null,
         }));
@@ -465,7 +466,9 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
           ? (body.type as "token" | "password" | "basic" | "secret")
           : "secret";
         const username = typeof body.username === "string" && body.username.trim() ? body.username.trim() : undefined;
-        await setKeychainEntry({ name, type, secret, username });
+        const userNote = typeof body.userNote === "string" ? body.userNote : undefined;
+        const agentNote = typeof body.agentNote === "string" ? body.agentNote : undefined;
+        await setKeychainEntry({ name, type, secret, username, userNote, agentNote });
         return channel.json({ ok: true, name, type });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -485,6 +488,27 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
         }
         const removed = deleteKeychainEntry(name);
         return channel.json({ ok: true, removed });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return channel.json({ error: message }, 400);
+      }
+    },
+  },
+  {
+    method: "POST",
+    path: "/agent/keychain/notes",
+    handle: async (channel, req) => {
+      try {
+        const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+        const name = typeof body.name === "string" ? body.name.trim() : "";
+        if (!name) {
+          return channel.json({ error: "Provide name." }, 400);
+        }
+        const userNote = typeof body.userNote === "string" ? body.userNote : "";
+        const agentNote = typeof body.agentNote === "string" ? body.agentNote : "";
+        const updated = updateKeychainEntryNotes(name, { userNote, agentNote });
+        if (!updated) return channel.json({ error: `Keychain entry not found: ${name}` }, 404);
+        return channel.json({ ok: true, name, userNote, agentNote });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return channel.json({ error: message }, 400);
