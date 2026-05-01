@@ -23,6 +23,11 @@ import { getCompactionSettingsData, resetCompactionBackoff, saveCompactionSettin
 import { getGeneralSettingsData, saveGeneralSettings } from "../handlers/general-settings.js";
 import { getQuickActionsSettingsData, saveQuickActionsSettings } from "../handlers/quick-actions-settings.js";
 import { getWorkspaceSettingsData, saveWorkspaceSettings } from "../handlers/workspace-settings.js";
+import {
+  clearEnvironmentOverride,
+  getEnvironmentSettingsData,
+  setEnvironmentOverride,
+} from "../../../environment-overrides.js";
 import { PROVIDER_DEFS } from "../../../agent-control/provider-defs.js";
 import {
   listKeychainEntries,
@@ -298,6 +303,7 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
         ...getCompactionSettingsData(),
         quickActions: getQuickActionsSettingsData(),
         workspaceSettings: getWorkspaceSettingsData(),
+        environmentSettings: getEnvironmentSettingsData(),
         runtimePlatform: process.platform,
         providers,
         themes,
@@ -364,6 +370,29 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return channel.json({ error: message || "Failed to save workspace settings." }, 400);
+      }
+    },
+  },
+  {
+    method: "GET",
+    path: "/agent/settings/environment",
+    handle: (channel) => channel.json({ ok: true, settings: getEnvironmentSettingsData() }, 200),
+  },
+  {
+    method: "POST",
+    path: "/agent/settings/environment",
+    handle: async (channel, req) => {
+      try {
+        const body = await req.json().catch(() => ({}));
+        const payload = (body && typeof body === "object") ? body as Record<string, unknown> : {};
+        const action = typeof payload.action === "string" ? payload.action.trim().toLowerCase() : "set";
+        const saved = action === "clear"
+          ? clearEnvironmentOverride(payload.name)
+          : setEnvironmentOverride(payload.name, payload.value);
+        return channel.json({ ok: true, settings: saved }, 200);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return channel.json({ error: message || "Failed to save environment override." }, 400);
       }
     },
   },

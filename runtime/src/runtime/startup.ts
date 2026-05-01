@@ -21,6 +21,7 @@ import { getDb, initDatabase, storeChatMetadata, storeMessage } from "../db.js";
 import type { AgentQueue } from "../queue.js";
 import { startToolOutputCleanup } from "../tool-output.js";
 import { createUuid } from "../utils/ids.js";
+import { applyEnvironmentOverrides } from "../environment-overrides.js";
 import { createLogger } from "../utils/logger.js";
 import { patchConsoleTimestamps } from "./console-timestamps.js";
 import { startExternalProgressWatchdogMonitor } from "./progress-watchdog-supervisor.js";
@@ -153,6 +154,7 @@ export function initializeRuntimeEnvironment(state: RuntimeState): void {
   bootstrapWorkspaceFromSkel();
 
   initDatabase();
+  applyEnvironmentOverrides();
   startExternalProgressWatchdogMonitor();
   const cleanedOrphans = cleanupOrphanedActiveChatArtifacts();
   if (cleanedOrphans > 0) {

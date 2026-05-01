@@ -39,7 +39,7 @@ import { GeneralSection } from './settings/general.js';
 perf('imports-done');
 
 type SettingsSectionComponent = unknown;
-type BuiltinSectionId = 'general' | 'sessions' | 'compaction' | 'keyboard' | 'workspace' | 'providers' | 'models' | 'theme' | 'quick-actions' | 'keychain' | 'tools' | 'addons';
+type BuiltinSectionId = 'general' | 'sessions' | 'compaction' | 'keyboard' | 'workspace' | 'environment' | 'providers' | 'models' | 'theme' | 'quick-actions' | 'keychain' | 'tools' | 'addons';
 
 const builtinSectionComponentCache = new Map<BuiltinSectionId, SettingsSectionComponent>();
 const builtinSectionLoadPromiseCache = new Map<BuiltinSectionId, Promise<SettingsSectionComponent>>();
@@ -53,6 +53,7 @@ const BUILTIN_SECTION_LOADERS: Record<BuiltinSectionId, () => Promise<SettingsSe
     compaction: () => import('./settings/compaction.js').then(mod => mod.CompactionSection),
     keyboard: () => import('./settings/keyboard.js').then(mod => mod.KeyboardSection),
     workspace: () => import('./settings/workspace.js').then(mod => mod.WorkspaceSection),
+    environment: () => import('./settings/environment.js').then(mod => mod.EnvironmentSection),
     providers: () => import('./settings/providers.js').then(mod => mod.ProvidersSection),
     models: () => import('./settings/models.js').then(mod => mod.ModelsSection),
     theme: () => import('./settings/appearance.js').then(mod => mod.ThemeSection),
@@ -110,6 +111,7 @@ const iconGeneral = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="n
 const iconSessions = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`;
 const iconCompaction = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 10 9 10"/><path d="M12 7v5l3 3"/></svg>`;
 const iconWorkspace = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>`;
+const iconEnvironment = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/><path d="M8 7v10"/><path d="M16 7v10"/></svg>`;
 const iconKeyboard = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01"/><path d="M10 9h.01"/><path d="M14 9h.01"/><path d="M18 9h.01"/><path d="M8 13h.01"/><path d="M12 13h.01"/><path d="M16 13h.01"/><path d="M7 17h10"/></svg>`;
 const iconProviders = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>`;
 const iconModels = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="14" height="10" rx="2"/><circle cx="9" cy="14" r="1.5" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.5" fill="currentColor" stroke="none"/><line x1="12" y1="9" x2="12" y2="5"/><circle cx="12" cy="4" r="1.5"/></svg>`;
@@ -126,6 +128,7 @@ const BUILTIN_SECTIONS = [
     { id: 'compaction', label: 'Compaction', icon: iconCompaction, searchable: false, order: 13 },
     { id: 'keyboard', label: 'Keyboard', icon: iconKeyboard, searchable: true, placeholder: 'Filter shortcuts…', order: 14 },
     { id: 'workspace', label: 'Workspace', icon: iconWorkspace, searchable: false, order: 15 },
+    { id: 'environment', label: 'Environment', icon: iconEnvironment, searchable: true, placeholder: 'Filter environment…', order: 16 },
     { id: 'providers', label: 'Providers', icon: iconProviders, searchable: false, order: 20 },
     { id: 'models', label: 'Models', icon: iconModels, searchable: true, placeholder: 'Filter models…', order: 30 },
     { id: 'theme', label: 'Appearance', icon: iconAppearance, searchable: false, order: 40 },
@@ -298,6 +301,7 @@ export function SettingsDialogContent({ onClose }) {
             case 'compaction': return html`<${Comp} settingsData=${settingsData} setStatus=${setStatus} mergeSettingsData=${mergeSettingsData} />`;
             case 'keyboard': return html`<${Comp} filter=${filter} setStatus=${setStatus} />`;
             case 'workspace': return html`<${Comp} settingsData=${settingsData} setStatus=${setStatus} mergeSettingsData=${mergeSettingsData} />`;
+            case 'environment': return html`<${Comp} settingsData=${settingsData} filter=${filter} setStatus=${setStatus} mergeSettingsData=${mergeSettingsData} />`;
             case 'providers': return html`<${Comp} providers=${settingsData?.providers} setStatus=${setStatus} />`;
             case 'models': return html`<${Comp} filter=${filter} />`;
             case 'theme': return html`<${Comp} themes=${settingsData?.themes} colorKeys=${settingsData?.colorKeys} settingsData=${settingsData} setStatus=${setStatus} mergeSettingsData=${mergeSettingsData} />`;

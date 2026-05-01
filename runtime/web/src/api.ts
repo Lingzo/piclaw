@@ -213,6 +213,17 @@ export async function saveWorkspaceSettings(payload) {
     });
 }
 
+export async function getEnvironmentSettings() {
+    return request('/agent/settings/environment');
+}
+
+export async function saveEnvironmentOverride(payload) {
+    return request('/agent/settings/environment', {
+        method: 'POST',
+        body: JSON.stringify(payload || {}),
+    });
+}
+
 /**
  * List currently active chat agents/branches known to the backend session pool.
  */
