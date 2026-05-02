@@ -40,6 +40,22 @@ bun run test:compose      # compose area only
 bun run test:mobile       # mobile/iPad scenarios
 ```
 
+## CI trigger model
+
+E2E tests run on CI **only** when a prerelease tag is pushed:
+
+| Trigger | Runs E2E? |
+|---|---|
+| Push to `main` | No |
+| Pull request | No |
+| Tag `v*-ux` or `v*-prerelease` | **Yes** |
+| `workflow_dispatch` | **Yes** (manual) |
+| Final release tag `v*` (no suffix) | No |
+
+This keeps standard commits fast while ensuring every release candidate passes the full UX regression suite before the final tag is cut.
+
+See the top-level `AGENTS.md` for the full release process.
+
 ## Writing tests
 
 1. Write a `.feature` file describing the user story
