@@ -124,6 +124,20 @@
 - Delete: confirmation required, no accidental trigger from gestures
 - Explorer: responsive to touch, no stuck drag states
 
+### US-11: PWA Manifest and Home Screen Icons
+> As a user adding PiClaw to my iOS home screen, I want the manifest to always be correct and supply high-resolution versions of the avatar icons, so that the desktop icon looks sharp and branded.
+
+**Acceptance criteria:**
+- `/manifest.json` returns valid JSON with `name`, `icons`, `start_url`, `display`
+- Manifest includes 192x192 and 512x512 PNG icons
+- Icon URLs actually resolve to PNG images of the declared size
+- Apple touch icons at 180x180, 167x167, 152x152 all resolve
+- Generic `/apple-touch-icon.png` resolves
+- `/favicon.ico` serves a valid PNG (Safari compatibility)
+- HTML head contains `<link rel="apple-touch-icon">` tags with correct sizes
+- When avatar changes, manifest icon URLs get a new version parameter
+- Icons use the custom agent avatar when configured, not generic defaults
+
 ---
 
 ## Priority Matrix
@@ -140,6 +154,7 @@
 | US-08 Panes | ★★★ | ★ | ★★★ | Medium | High |
 | US-09 Session lifecycle | ★★ | ★ | ★★ | Medium | Medium |
 | US-10 Workspace files | ★★ | ★ | ★★ | Low-Medium | Medium |
+| US-11 PWA manifest | ★★★ | ★★★ | ★ | Every install | Medium |
 
 ## Test implementation priority
 
@@ -153,3 +168,4 @@
 8. **US-08** — Panes
 9. **US-09** — Session lifecycle
 10. **US-10** — Workspace files
+11. **US-11** — PWA manifest & icons
