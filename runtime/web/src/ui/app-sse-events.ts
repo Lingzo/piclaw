@@ -253,6 +253,9 @@ export function handleAppSseEvent(
       const serverTint = data.ui_theme.tint || null;
       applyThemeFromEvent({ theme: serverTheme, tint: serverTint });
     }
+    if (data?.ui_meters) {
+      applyMetersFromEvent(data.ui_meters);
+    }
     const resyncGeneration = previewResyncGenerationRef.current + 1;
     previewResyncGenerationRef.current = resyncGeneration;
     previewResyncPendingRef.current = true;

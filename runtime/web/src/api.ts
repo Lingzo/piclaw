@@ -144,6 +144,13 @@ export async function getSystemMetrics() {
     return request('/agent/system-metrics');
 }
 
+export async function saveUiState(payload) {
+    return request('/agent/ui-state', {
+        method: 'POST',
+        body: JSON.stringify(payload || {}),
+    });
+}
+
 /**
  * Create a new post
  */

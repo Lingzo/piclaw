@@ -13,7 +13,6 @@ import {
   getAgentRuntimeConfig,
   getIdentityConfig,
   getRoutingConfig,
-  setUiThemeConfig,
 } from "../../../core/config.js";
 import { parseControlCommand } from "../../../agent-control/index.js";
 import { isSlashCommandInvocation } from "../../../agent-pool/slash-command.js";
@@ -24,6 +23,7 @@ import {
 } from "../messaging/agent-message-service.js";
 import { handleUiThemeCommand } from "../theming/ui-theme-commands.js";
 import { handleUiMetersCommand } from "../ui-meters-commands.js";
+import { getServerUiMetersConfig, setServerUiMetersConfig, setServerUiThemeConfig } from "../ui-state.js";
 import {
   beginChatPreflight,
   beginChatRun,
@@ -57,6 +57,7 @@ import type { AttachmentInfo } from "../../../agent-pool/attachments.js";
 import { cancelScheduledIdleAutoCompaction, maybeAutoCompactSessionBeforePrompt } from "../../../agent-pool/compaction.js";
 import { checkPendingShutdown } from "../../../runtime/shutdown-registry.js";
 import { DEFAULT_BASE_RETRY_MS, getRetryAtIso } from "../../../queue/retry-policy.js";
+import { formatProviderError } from "./provider-error-format.js";
 import {
   beginTrackedPhase,
   heartbeatTrackedPhase,
@@ -198,6 +199,20 @@ function buildErrorOutcomeMarker(
       title: "Tool-use budget exceeded",
       detail: errorText.slice(0, 500),
       severity: "warning",
+      draftRecovered: options.draftRecovered,
+      attemptsUsed: options.attemptsUsed,
+      classifier: options.classifier,
+    });
+  }
+
+  const providerError = formatProviderError(errorText);
+  if (providerError) {
+    return buildTurnOutcomeMarker({
+      kind: providerError.category === "network" ? "network" : "provider",
+      label: providerError.label,
+      title: providerError.title,
+      detail: providerError.detail,
+      severity: providerError.severity,
       draftRecovered: options.draftRecovered,
       attemptsUsed: options.attemptsUsed,
       classifier: options.classifier,
@@ -687,8 +702,8 @@ export async function handleAgentMessage(
 
   if (themeCommand) {
     if (themeCommand.payload) {
-      setUiThemeConfig({ theme: themeCommand.payload.theme, tint: themeCommand.payload.tint ?? null });
-      channel.broadcastEvent("ui_theme", { ...themeCommand.payload });
+      const uiTheme = setServerUiThemeConfig({ theme: themeCommand.payload.theme, tint: themeCommand.payload.tint ?? null });
+      channel.broadcastEvent("ui_theme", { ...uiTheme });
     }
 
     const formattedThemeMessage = formatOutbound(themeCommand.message, "web");
@@ -714,7 +729,13 @@ export async function handleAgentMessage(
 
   if (metersCommand) {
     if (metersCommand.payload) {
-      channel.broadcastEvent("ui_meters", { chat_jid: chatJid, ...metersCommand.payload });
+      const currentMeters = getServerUiMetersConfig();
+      const nextMeters = metersCommand.payload.mode === "toggle"
+        ? setServerUiMetersConfig({ enabled: !currentMeters.enabled })
+        : metersCommand.payload.mode === "set"
+          ? setServerUiMetersConfig({ enabled: metersCommand.payload.enabled })
+          : setServerUiMetersConfig({ collapsed: metersCommand.payload.collapsed });
+      channel.broadcastEvent("ui_meters", { chat_jid: chatJid, mode: "set", ...nextMeters });
     }
 
     const formattedMetersMessage = formatOutbound(metersCommand.message, "web");
@@ -1759,10 +1780,11 @@ export async function processChat(
     }
 
     const errorText = output.error || "Agent error";
+    const providerError = formatProviderError(errorText);
     const aborted = isAbortError(errorText);
-    const rateLimited = isRateLimitError(errorText);
-    const networkFailed = isNetworkError(errorText);
-    const networkDetail = networkFailed ? describeNetworkError(errorText) : null;
+    const rateLimited = providerError?.category === "rate_limit" || isRateLimitError(errorText);
+    const networkFailed = providerError?.category === "network" || isNetworkError(errorText);
+    const networkDetail = providerError?.title || (networkFailed ? describeNetworkError(errorText) : null);
     const fallbackPublished = errorText.toLowerCase().includes("timed out")
       ? publishDraftFallback("timeout", errorText)
       : rateLimited
@@ -1803,8 +1825,8 @@ export async function processChat(
       thread_id: threadId,
       agent_id: agentId,
       type: "error",
-      title: rateLimited ? "AI provider rate limit" : networkFailed ? networkDetail! : errorText,
-      detail: rateLimited ? errorText : networkFailed ? errorText : undefined,
+      title: providerError?.title || (rateLimited ? "AI provider rate limit" : networkFailed ? networkDetail! : errorText),
+      detail: providerError?.detail || (rateLimited ? errorText : networkFailed ? errorText : undefined),
       turn_id: turnId,
     });
     return;

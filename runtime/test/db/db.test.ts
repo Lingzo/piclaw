@@ -321,6 +321,51 @@ test("mergeChatBranchIntoParent moves child chat state into its parent", () => {
   expect(db.getDb().prepare("SELECT COUNT(*) AS count FROM extension_kv WHERE scope = 'chat' AND scope_key = ?").get(rootChatJid)).toEqual({ count: 1 });
 });
 
+test("mergeChatBranchIntoParent materializes queued followups instead of carrying queue state", () => {
+  const rootChatJid = `web:test-merge-queue-root-${Date.now()}`;
+  const branchChatJid = `${rootChatJid}:branch:queued`;
+  const now = new Date().toISOString();
+  const later = new Date(Date.now() + 1000).toISOString();
+
+  db.storeChatMetadata(rootChatJid, now, "Root");
+  db.storeChatMetadata(branchChatJid, later, "Branch");
+  const root = db.getChatBranchByChatJid(rootChatJid);
+  db.ensureChatBranch({
+    chat_jid: branchChatJid,
+    root_chat_jid: rootChatJid,
+    parent_branch_id: root?.branch_id ?? null,
+    agent_name: "queued-child",
+  });
+
+  const alreadyStoredRowId = db.storeMessage(makeMessage(branchChatJid, "already queued", now));
+  db.setDeferredQueuedFollowups(branchChatJid, [
+    {
+      rowId: alreadyStoredRowId,
+      queuedContent: "already queued",
+      threadId: alreadyStoredRowId,
+      queuedAt: now,
+    },
+    {
+      rowId: 0,
+      queuedContent: "deferred queued",
+      threadId: null,
+      queuedAt: later,
+      contentBlocks: [{ type: "text", text: "deferred queued" }],
+    },
+  ]);
+
+  const result = db.mergeChatBranchIntoParent(branchChatJid);
+
+  expect(result.counts.messages).toBe(2);
+  expect(db.getDeferredQueuedFollowups(rootChatJid)).toEqual([]);
+  expect(db.getDeferredQueuedFollowups(branchChatJid)).toEqual([]);
+  expect(db.getDb().prepare("SELECT COUNT(*) AS count FROM chat_cursors WHERE chat_jid = ? AND queued_followups_json IS NOT NULL").get(rootChatJid)).toEqual({ count: 0 });
+  expect(db.getChatCursor(rootChatJid)).toBe(later);
+  expect(db.getDb().prepare("SELECT COUNT(*) AS count FROM messages WHERE chat_jid = ? AND content = ?").get(rootChatJid, "already queued")).toEqual({ count: 1 });
+  expect(db.getDb().prepare("SELECT COUNT(*) AS count FROM messages WHERE chat_jid = ? AND content = ?").get(rootChatJid, "deferred queued")).toEqual({ count: 1 });
+  expect(db.getDb().prepare("SELECT COUNT(*) AS count FROM messages WHERE chat_jid = ?").get(branchChatJid)).toEqual({ count: 0 });
+});
+
 test("mergeChatBranchIntoParent rejects roots and branches with children", () => {
   const rootChatJid = `web:test-merge-guard-${Date.now()}`;
   const branchChatJid = `${rootChatJid}:branch:middle`;

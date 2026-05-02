@@ -19,9 +19,10 @@ import {
   handleUninstallAddon,
 } from "../handlers/addons.js";
 import { getCompactionSettingsData, resetCompactionBackoff, saveCompactionSettings } from "../handlers/compaction-settings.js";
-import { getGeneralSettingsData, saveGeneralSettings } from "../handlers/general-settings.js";
+import { getGeneralSettingsData, rotateWidgetTokenSettings, saveGeneralSettings } from "../handlers/general-settings.js";
 import { getQuickActionsSettingsData, saveQuickActionsSettings } from "../handlers/quick-actions-settings.js";
 import { getWorkspaceSettingsData, saveWorkspaceSettings } from "../handlers/workspace-settings.js";
+import { getServerUiState, setServerUiMetersConfig, setServerUiThemeConfig } from "../ui-state.js";
 import {
   clearEnvironmentOverride,
   getEnvironmentSettingsData,
@@ -261,6 +262,38 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
   },
   {
     method: "GET",
+    path: "/agent/ui-state",
+    handle: (channel) => channel.json({ ok: true, ...getServerUiState() }, 200),
+  },
+  {
+    method: "POST",
+    path: "/agent/ui-state",
+    handle: async (channel, req) => {
+      const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+      const response: Record<string, unknown> = { ok: true };
+      if (body?.ui_theme && typeof body.ui_theme === "object") {
+        const themeBody = body.ui_theme as Record<string, unknown>;
+        const nextTheme = setServerUiThemeConfig({
+          ...(typeof themeBody.theme === "string" ? { theme: themeBody.theme } : {}),
+          ...(themeBody.tint !== undefined ? { tint: typeof themeBody.tint === "string" ? themeBody.tint : null } : {}),
+        });
+        response.ui_theme = nextTheme;
+        channel.broadcastEvent("ui_theme", { ...nextTheme });
+      }
+      if (body?.ui_meters && typeof body.ui_meters === "object") {
+        const metersBody = body.ui_meters as Record<string, unknown>;
+        const nextMeters = setServerUiMetersConfig({
+          ...(typeof metersBody.enabled === "boolean" ? { enabled: metersBody.enabled } : {}),
+          ...(typeof metersBody.collapsed === "boolean" ? { collapsed: metersBody.collapsed } : {}),
+        });
+        response.ui_meters = nextMeters;
+        channel.broadcastEvent("ui_meters", { mode: "set", ...nextMeters });
+      }
+      return channel.json(response, 200);
+    },
+  },
+  {
+    method: "GET",
     path: "/agent/settings-data",
     handle: (channel) => {
       const themes = THEME_PRESETS.map((p) => {
@@ -357,6 +390,14 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
         const message = error instanceof Error ? error.message : String(error);
         return channel.json({ error: message || "Failed to save general settings." }, 400);
       }
+    },
+  },
+  {
+    method: "POST",
+    path: "/agent/settings/widget-token/regenerate",
+    handle: (channel) => {
+      const settings = rotateWidgetTokenSettings();
+      return channel.json({ ok: true, settings }, 200);
     },
   },
   {

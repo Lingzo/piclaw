@@ -366,7 +366,17 @@ export class AgentBranchManager {
     this.options.activeForkBaseLeafByChat.delete(normalizedChatJid);
     this.options.cancelSessionWarmup?.(normalizedChatJid);
 
-    return mergeChatBranchIntoParentDb(normalizedChatJid);
+    const result = mergeChatBranchIntoParentDb(normalizedChatJid);
+    try {
+      removeSessionArtifacts(normalizedChatJid);
+    } catch (err) {
+      this.options.onWarn?.("Failed to remove merged session artifacts", {
+        operation: "merge_chat_branch.remove_session_artifacts",
+        chatJid: normalizedChatJid,
+        err,
+      });
+    }
+    return result;
   }
 
   async pruneChatBranch(chatJid: string): Promise<ChatBranchRecord> {
