@@ -62,7 +62,7 @@ jobs:
           # Start server
           export PICLAW_WEB_PORT=3000
           echo "PICLAW_WEB_PORT=$PICLAW_WEB_PORT" >> $GITHUB_ENV
-          timeout 60 bun run start &
+          bun run start > "$PICLAW_WORKSPACE/piclaw-e2e-server.log" 2>&1 &
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
 
