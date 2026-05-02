@@ -6,7 +6,7 @@ export default defineConfig({
   retries: 1,
   workers: 1, // serialize for stable UX assertions
   reporter: [
-    ['html', { outputFolder: './reports', open: 'never' }],
+    ['html', { outputFolder: './reports/html', open: 'never' }],
     ['json', { outputFile: './reports/results.json' }],
   ],
   use: {
