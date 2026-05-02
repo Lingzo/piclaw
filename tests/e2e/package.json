@@ -2,13 +2,17 @@
   "name": "piclaw-e2e",
   "private": true,
   "scripts": {
+    "setup": "bun run setup/configure-test-instance.ts",
+    "validate": "bun run setup/validate-test-config.ts",
     "test": "playwright test",
-    "test:compose": "playwright test features/compose/",
-    "test:timeline": "playwright test features/timeline/",
-    "test:sessions": "playwright test features/sessions/",
-    "test:settings": "playwright test features/settings/",
-    "test:editor": "playwright test features/editor/",
+    "test:compose": "playwright test steps/us02-*",
+    "test:timeline": "playwright test steps/timeline-*",
+    "test:sessions": "playwright test steps/us03-* steps/us09-*",
+    "test:settings": "playwright test steps/us06-*",
+    "test:editor": "playwright test steps/us04-*",
     "test:mobile": "playwright test --project=ipad --project=iphone",
+    "test:reconnect": "playwright test steps/us07-*",
+    "test:smoke": "playwright test steps/us01-*",
     "report": "playwright show-report reports"
   },
   "devDependencies": {

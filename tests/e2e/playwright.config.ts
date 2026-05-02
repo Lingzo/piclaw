@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './features',
+  testDir: './steps',
   timeout: 30_000,
   retries: 1,
   workers: 1, // serialize for stable UX assertions
