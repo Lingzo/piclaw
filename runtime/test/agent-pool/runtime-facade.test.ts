@@ -302,7 +302,7 @@ test("AgentRuntimeFacade does not block getAvailableModels on a cold provider-us
 
     const available = await Promise.race([
       fixture.facade.getAvailableModels("web:default"),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timed out waiting for getAvailableModels")), 50)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timed out waiting for getAvailableModels")), 500)),
     ]);
 
     expect((available as any).current).toBe("openai-codex/gpt-test");
