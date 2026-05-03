@@ -125,7 +125,7 @@
 - Explorer: responsive to touch, no stuck drag states
 
 ### US-11: PWA Manifest and Home Screen Icons
-> As a user adding PiClaw to my iOS home screen, I want the manifest to always be correct and supply high-resolution versions of the avatar icons, so that the desktop icon looks sharp and branded.
+> As a user adding PiClaw to my iOS or Android home screen, I want the manifest and service worker to always be correct and supply high-resolution versions of the avatar icons, so that the installed app looks sharp and behaves like a real PWA.
 
 **Acceptance criteria:**
 - `/manifest.json` returns valid JSON with `name`, `icons`, `start_url`, `display`
@@ -137,6 +137,7 @@
 - HTML head contains `<link rel="apple-touch-icon">` tags with correct sizes
 - When avatar changes, manifest icon URLs get a new version parameter
 - Icons use the custom agent avatar when configured, not generic defaults
+- Android Chrome sees an active service worker with a same-origin GET fetch handler
 
 ### US-12: Thoughts Panel Scroll Behaviour
 > As a user monitoring agent reasoning, I want the thoughts panel to become scrollable when I click "N more lines" and revert to non-scrollable when I collapse it, so that I can read long reasoning without the panel taking over the screen.

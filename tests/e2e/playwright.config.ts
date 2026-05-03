@@ -32,5 +32,9 @@ export default defineConfig({
       name: 'iphone',
       use: { ...devices['iPhone 14 Pro'] },
     },
+    {
+      name: 'android-chrome',
+      use: { ...devices['Pixel 5'] },
+    },
   ],
 });
