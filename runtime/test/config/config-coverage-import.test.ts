@@ -153,6 +153,7 @@ test("plain import covers config module init branches with isolated argv and env
       totpWindow: 4,
       sessionTtl: 60,
       internalSecret: "config-secret",
+      widgetToken: "",
       passkeyMode: "passkey-only",
       terminalEnabled: true,
       notificationDebugLabels: false,
