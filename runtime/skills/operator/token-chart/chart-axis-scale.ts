@@ -1,3 +1,10 @@
+/**
+ * SCRIPT_JDOC:
+ * {
+ *   "summary": "Shared chart axis scaling helpers for token usage and cost charts.",
+ *   "role": "module"
+ * }
+ */
 export interface ChartYAxisScale {
   yMax: number;
   tickStep: number;
