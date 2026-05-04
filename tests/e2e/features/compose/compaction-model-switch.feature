@@ -29,10 +29,10 @@ Feature: Compaction indicator and model switching
     And clicking abort should cancel the compaction
 
   Scenario: Context pie usage updates after compaction completes
-    Given the context was at 85% usage
+    Given the context was at N% usage before compaction
     When compaction completes successfully
-    Then the context pie should reflect the reduced usage
-    And the usage percentage should be lower than before
+    Then the context pie should show a percentage <= N
+    And the pie title should contain the updated "Context: XK / YK tokens (Z%)"
 
   Scenario: Compaction suppressed shows backoff notice
     Given compaction has failed recently
@@ -42,18 +42,16 @@ Feature: Compaction indicator and model switching
 
   # ── Model switching after compaction ──
 
-  Scenario: Model switcher is responsive during compaction
-    Given compaction is in progress
-    Then the model button in the compose bar should be clickable
-    And the model popup/settings should open normally
-
-  Scenario: Switch to a smaller model immediately after compaction
+  Scenario: Model switcher is responsive immediately after compaction
     Given compaction has just completed
+    Then the model button in the compose bar should NOT be disabled
+    And the context pie should show the updated compacted usage value
+
+  Scenario: Switch to a different model updates label and context window
     When I open the model switcher
-    And I select a smaller context model
-    Then the model should switch without delay
-    And the compose bar should show "Switching…" then the new model name
-    And the context usage should update for the new model's window
+    And I select a different model
+    Then the compose bar should show the new model name
+    And the context pie title should reflect the new model's context window
 
   Scenario: Model switch via /model command works during idle
     When I type "/model opencode/gpt-4.1-nano" and press Enter

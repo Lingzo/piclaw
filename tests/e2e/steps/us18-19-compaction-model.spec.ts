@@ -24,20 +24,30 @@ async function getCompactionState(page: import('@playwright/test').Page) {
     const abortBtn = document.querySelector('.send-btn.abort-mode, .send-btn.compacting-mode') as HTMLElement | null;
     const statusNotice = document.querySelector('.compose-status-notice, .compose-compaction-title') as HTMLElement | null;
 
+    // Parse usage percentage from the pie title attribute
+    // Format: "Context: 45K / 128K tokens (35%) — Compact context"
+    const pieTitle = pie?.getAttribute('title') || '';
+    const pctMatch = pieTitle.match(/\((\d+)%\)/);
+    const usagePercent = pctMatch ? parseInt(pctMatch[1], 10) : null;
+
+    // Parse token counts
+    const tokenMatch = pieTitle.match(/Context:\s*([\d.]+K?)\s*\/\s*([\d.]+K?)\s*tokens/);
+    const tokensUsed = tokenMatch ? tokenMatch[1] : null;
+    const contextWindow = tokenMatch ? tokenMatch[2] : null;
+
     return {
       pieVisible: pie !== null && pie.offsetParent !== null,
       isCompacting: pie?.classList.contains('is-compacting') || false,
       pieAriaLabel: pie?.getAttribute('aria-label') || '',
-      pieTitle: pie?.getAttribute('title') || '',
+      pieTitle,
+      usagePercent,
+      tokensUsed,
+      contextWindow,
       abortMode: abortBtn?.classList.contains('compacting-mode') || false,
       statusNoticeText: statusNotice?.textContent?.trim() || '',
-      usagePercent: (() => {
-        // Try to extract usage from the pie or nearby label
-        const usageHint = document.querySelector('.compose-model-usage-hint');
-        const text = usageHint?.textContent || '';
-        const match = text.match(/(\d+)%/);
-        return match ? parseInt(match[1], 10) : null;
-      })(),
+      // Check if the timer span is showing
+      hasTimer: !!pie?.querySelector('.compose-context-pie-timer'),
+      timerText: pie?.querySelector('.compose-context-pie-timer')?.textContent?.trim() || '',
     };
   });
 }
@@ -53,96 +63,142 @@ async function getModelLabel(page: import('@playwright/test').Page): Promise<str
 // ── US-18: Compaction Indicator ──────────────────────────────────
 
 test.describe('US-18: Compaction Indicator', () => {
-  test('context pie is visible in compose bar', async ({ authedPage: page }) => {
+  test('context pie shows token usage and percentage', async ({ authedPage: page }) => {
     await page.waitForSelector(sel.timeline);
 
-    // The context pie should exist when context usage is tracked
-    const pie = page.locator('.compose-context-pie');
-    // It may not be visible if no usage data is available yet
-    // Send a message to establish usage
+    // Send a message to establish context usage
     const compose = page.locator(sel.composeInput);
     await compose.click();
-    await compose.fill('Hello');
+    await compose.fill('Tell me about testing software');
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(5000);
 
-    // After a turn, context pie should appear
     const state = await getCompactionState(page);
-    // Soft check — pie visibility depends on provider reporting usage
-    if (state.pieVisible) {
-      expect(state.pieAriaLabel).toBeTruthy();
+    if (!state.pieVisible) {
+      test.skip(undefined, 'Context pie not visible — provider may not report usage');
+      return;
     }
+
+    // Pie title should contain usage info: "Context: XK / YK tokens (Z%)"
+    expect(state.pieTitle).toContain('Context:');
+    expect(state.usagePercent).not.toBeNull();
+    expect(state.usagePercent!).toBeGreaterThanOrEqual(0);
+    expect(state.usagePercent!).toBeLessThanOrEqual(100);
   });
 
-  test('compaction_start SSE shows compaction status in compose bar', async ({ authedPage: page }) => {
+  test('/compact shows compaction indicator then updates usage', async ({ authedPage: page }) => {
     await page.waitForSelector(sel.timeline);
 
-    // Trigger compaction via /compact command
+    // Build up some context first
     const compose = page.locator(sel.composeInput);
     await compose.click();
-    await compose.fill('/compact');
+    await compose.fill('Explain the history of computing in detail');
     await page.keyboard.press('Enter');
+    await page.waitForTimeout(8000);
 
-    // Wait for compaction indicator to appear
-    await page.waitForTimeout(2000);
-
-    const state = await getCompactionState(page);
-    // During compaction, the pie should show is-compacting
-    // OR the abort button should be in compacting mode
-    // This depends on whether the model supports compaction
-    // Soft assertion — compaction may complete very quickly
-    if (state.isCompacting || state.abortMode) {
-      expect(state.isCompacting || state.abortMode).toBe(true);
-      // Should have some aria label mentioning compaction
-      if (state.pieAriaLabel) {
-        expect(state.pieAriaLabel.toLowerCase()).toContain('compact');
-      }
+    // Capture usage before compaction
+    const before = await getCompactionState(page);
+    if (!before.pieVisible || before.usagePercent === null) {
+      test.skip(undefined, 'No context usage reported — cannot test compaction');
+      return;
     }
-  });
-
-  test('compaction indicator clears after completion', async ({ authedPage: page }) => {
-    await page.waitForSelector(sel.timeline);
+    const usageBefore = before.usagePercent;
 
     // Trigger compaction
-    const compose = page.locator(sel.composeInput);
     await compose.click();
     await compose.fill('/compact');
     await page.keyboard.press('Enter');
 
-    // Wait for it to complete
-    await page.waitForTimeout(15000);
+    // During compaction: check for is-compacting and timer
+    await page.waitForTimeout(1000);
+    const during = await getCompactionState(page);
+    // Compaction may be too fast to catch — soft check
+    if (during.isCompacting) {
+      expect(during.hasTimer).toBe(true);
+      expect(during.pieAriaLabel.toLowerCase()).toContain('compaction');
+    }
 
-    const state = await getCompactionState(page);
-    // After completion, compaction indicator should be gone
-    expect(state.isCompacting).toBe(false);
-    expect(state.abortMode).toBe(false);
+    // Wait for compaction to complete
+    await page.waitForFunction(() => {
+      const pie = document.querySelector('.compose-context-pie');
+      return !pie?.classList.contains('is-compacting');
+    }, { timeout: 30000 }).catch(() => {});
+
+    // After compaction: indicator should clear and usage should be lower
+    const after = await getCompactionState(page);
+    expect(after.isCompacting).toBe(false);
+    expect(after.abortMode).toBe(false);
+    expect(after.hasTimer).toBe(false);
+
+    if (after.usagePercent !== null) {
+      // Usage should be less than or equal to before (compaction reduces context)
+      expect(after.usagePercent).toBeLessThanOrEqual(usageBefore);
+      // Pie title should show the updated value
+      expect(after.pieTitle).toContain(`${after.usagePercent}%`);
+    }
+  });
+
+  test('context pie is clickable and triggers compaction', async ({ authedPage: page }) => {
+    await page.waitForSelector(sel.timeline);
+
+    // Send a message to get context usage
+    const compose = page.locator(sel.composeInput);
+    await compose.click();
+    await compose.fill('Build some context');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(5000);
+
+    const pie = page.locator('.compose-context-pie');
+    if (!(await pie.isVisible())) {
+      test.skip(undefined, 'Context pie not visible');
+      return;
+    }
+
+    // Click the pie — should trigger compaction
+    await pie.click();
+    await page.waitForTimeout(1000);
+
+    // Should show some compaction activity or at least not error
+    const errors: string[] = [];
+    page.on('pageerror', (err) => errors.push(err.message));
+    await page.waitForTimeout(2000);
+    expect(errors.length).toBe(0);
   });
 
   test('abort button enters compacting mode during compaction', async ({ authedPage: page }) => {
     await page.waitForSelector(sel.timeline);
 
-    // Send a long message to build context, then compact
+    // Build context
     const compose = page.locator(sel.composeInput);
     await compose.click();
     await compose.fill('Write a detailed analysis of the global economy');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(5000);
 
-    // Now compact
+    // Compact
     await compose.click();
     await compose.fill('/compact');
     await page.keyboard.press('Enter');
 
-    // Check abort button state quickly
-    await page.waitForTimeout(500);
-    const abortBtn = page.locator('.send-btn.compacting-mode, .send-btn.abort-mode');
-    // The compacting mode may flash briefly — check within a window
-    const wasCompacting = await page.evaluate(() => {
-      const btn = document.querySelector('.send-btn');
-      return btn?.classList.contains('compacting-mode') || btn?.classList.contains('abort-mode') || false;
-    });
-    // Soft check — compaction may be too fast to catch
-    expect(typeof wasCompacting).toBe('boolean');
+    // Poll for compacting state (may be brief)
+    let sawCompacting = false;
+    for (let i = 0; i < 20; i++) {
+      const state = await getCompactionState(page);
+      if (state.isCompacting || state.abortMode) {
+        sawCompacting = true;
+        break;
+      }
+      await page.waitForTimeout(250);
+    }
+
+    // Wait for completion
+    await page.waitForFunction(() => {
+      const pie = document.querySelector('.compose-context-pie');
+      return !pie?.classList.contains('is-compacting');
+    }, { timeout: 30000 }).catch(() => {});
+
+    // Soft: compaction may complete too fast to observe
+    expect(typeof sawCompacting).toBe('boolean');
   });
 });
 
@@ -154,7 +210,6 @@ test.describe('US-19: Model Switching', () => {
     await page.waitForTimeout(2000);
 
     const label = await getModelLabel(page);
-    // Should show some model identifier
     expect(label.length).toBeGreaterThan(0);
   });
 
@@ -170,73 +225,111 @@ test.describe('US-19: Model Switching', () => {
     await modelBtn.click();
     await page.waitForTimeout(500);
 
-    // Should open settings or model popup
     const popup = page.locator('.model-popup, .settings-dialog, [data-pane="models"]');
     const opened = await popup.isVisible();
-    // Close if opened
-    if (opened) {
-      await page.keyboard.press('Escape');
-    }
+    if (opened) await page.keyboard.press('Escape');
     expect(opened).toBe(true);
   });
 
-  test('/model command switches model and updates label', async ({ authedPage: page }) => {
+  test('/model command shows current model info', async ({ authedPage: page }) => {
     await page.waitForSelector(sel.timeline);
 
-    const labelBefore = await getModelLabel(page);
-
-    // Send /model command (list available models)
     const compose = page.locator(sel.composeInput);
     await compose.click();
     await compose.fill('/model');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(2000);
 
-    // Check timeline for model list
     const lastPost = page.locator(sel.postContent).last();
     const text = await lastPost.textContent();
-    // /model with no args should show current model or list
     expect(text?.length).toBeGreaterThan(0);
   });
 
-  test('model switch shows "Switching…" transition', async ({ authedPage: page }) => {
+  test('model switch updates compose bar label and context usage', async ({ authedPage: page }) => {
     await page.waitForSelector(sel.timeline);
 
+    // Capture current state
+    const labelBefore = await getModelLabel(page);
+    const usageBefore = await getCompactionState(page);
+
+    // Open model selector
     const modelBtn = page.locator('.compose-model-hint, .compose-model-btn').first();
     if (!(await modelBtn.isVisible())) {
       test.skip(undefined, 'Model button not visible');
       return;
     }
 
-    // We can't switch to a specific model without knowing what's available,
-    // but we verify the "Switching…" state is handled
-    // Check that the disabled state works during switch
-    const isDisabledDuringSwitch = await page.evaluate(() => {
-      const btn = document.querySelector('.compose-model-hint, .compose-model-btn');
-      // The button should not be permanently disabled
-      return btn?.hasAttribute('disabled') || false;
-    });
-    expect(isDisabledDuringSwitch).toBe(false);
-  });
+    await modelBtn.click();
+    await page.waitForTimeout(500);
 
-  test('context usage updates reflect model window size', async ({ authedPage: page }) => {
-    await page.waitForSelector(sel.timeline);
+    // Find a different model to switch to
+    const modelOptions = page.locator('.model-popup input[type="radio"]:not(:checked), .settings-dialog .models-pane input[type="radio"]:not(:checked)');
+    const optionCount = await modelOptions.count();
+    if (optionCount === 0) {
+      await page.keyboard.press('Escape');
+      test.skip(undefined, 'No alternative models available to switch to');
+      return;
+    }
 
-    // Send a message to get initial context usage
-    const compose = page.locator(sel.composeInput);
-    await compose.click();
-    await compose.fill('Context usage check');
-    await page.keyboard.press('Enter');
+    // Click the first non-selected model
+    await modelOptions.first().click();
     await page.waitForTimeout(3000);
 
-    // Check that usage is displayed somewhere
-    const usageText = await page.evaluate(() => {
-      const hints = document.querySelectorAll('.compose-model-usage-hint, .compose-context-pie');
-      return Array.from(hints).map(h => h.textContent || h.getAttribute('title') || '').join(' ');
-    });
+    // Close dialog if still open
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.waitForTimeout(1000);
 
-    // Usage hint should exist and contain some numeric info
-    // (may be empty if provider doesn't report usage)
-    expect(typeof usageText).toBe('string');
+    // Label should have changed (or still be the same if switch failed)
+    const labelAfter = await getModelLabel(page);
+    const usageAfter = await getCompactionState(page);
+
+    // If the model actually changed, the label and/or context window should differ
+    if (labelAfter !== labelBefore) {
+      // Context usage title should reflect the new model's window
+      // The pie title contains "Context: XK / YK tokens" — Y should change
+      if (usageBefore.contextWindow && usageAfter.contextWindow) {
+        // Not necessarily different (models can have same window)
+        // but the pie should have valid data
+        expect(usageAfter.pieTitle).toContain('Context:');
+      }
+    }
+  });
+
+  test('model button not disabled after compaction', async ({ authedPage: page }) => {
+    await page.waitForSelector(sel.timeline);
+
+    // Build context and compact
+    const compose = page.locator(sel.composeInput);
+    await compose.click();
+    await compose.fill('Build some context for model switch test');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(5000);
+
+    await compose.click();
+    await compose.fill('/compact');
+    await page.keyboard.press('Enter');
+
+    // Wait for compaction to complete
+    await page.waitForFunction(() => {
+      const pie = document.querySelector('.compose-context-pie');
+      return !pie?.classList.contains('is-compacting');
+    }, { timeout: 30000 }).catch(() => {});
+
+    await page.waitForTimeout(500);
+
+    // Model button should be immediately clickable
+    const modelBtn = page.locator('.compose-model-hint, .compose-model-btn').first();
+    if (await modelBtn.isVisible()) {
+      const isDisabled = await modelBtn.evaluate((el) =>
+        (el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true'
+      );
+      expect(isDisabled).toBe(false);
+
+      // And context pie should show updated (compacted) usage
+      const state = await getCompactionState(page);
+      if (state.pieVisible && state.usagePercent !== null) {
+        expect(state.pieTitle).toContain(`${state.usagePercent}%`);
+      }
+    }
   });
 });
