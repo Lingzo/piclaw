@@ -11,7 +11,9 @@ export const test = base.extend<{ authedPage: Page }>({
     const baseURL = process.env.PICLAW_E2E_URL || 'http://localhost:8080';
     await page.goto(baseURL);
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(500);
+    // Wait for app shell to render — SSE keeps networkidle from resolving
+    await page.waitForSelector('.compose-box, .compose-editor, [data-testid="compose-box"]', { timeout: 60000 }).catch(() => {});
+    await page.waitForTimeout(2000); // SSE settle time
     await use(page);
   },
 });

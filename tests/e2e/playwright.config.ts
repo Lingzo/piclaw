@@ -14,6 +14,8 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
+    // Use domcontentloaded — SSE keeps networkidle from resolving
+    navigationTimeout: 30_000,
   },
   projects: [
     {
