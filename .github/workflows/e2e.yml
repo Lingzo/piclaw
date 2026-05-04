@@ -13,9 +13,46 @@ permissions:
 
 jobs:
   e2e:
-    name: E2E UX regression tests
+    name: E2E UX regression tests / ${{ matrix.stage }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stage: smoke-and-shell
+            specs: >-
+              steps/favicon-branding.spec.ts
+              steps/us01-morning-triage.spec.ts
+              steps/us11-pwa-manifest.spec.ts
+              steps/timeline-rendering.spec.ts
+          - stage: compose-and-theme
+            specs: >-
+              steps/us02-queue-steer.spec.ts
+              steps/us16-message-deletion.spec.ts
+              steps/us17-compose-instant-visibility.spec.ts
+              steps/theme-tint-commands.spec.ts
+          - stage: sessions-and-settings
+            specs: >-
+              steps/us03-session-switching.spec.ts
+              steps/us06-settings.spec.ts
+              steps/us09-session-lifecycle.spec.ts
+              steps/us12-system-meters.spec.ts
+              steps/us12-thoughts-panel.spec.ts
+          - stage: workspace-editor-panes
+            specs: >-
+              steps/us04-editor.spec.ts
+              steps/us08-panes.spec.ts
+              steps/us10-workspace-files.spec.ts
+              steps/us13-15-terminal.spec.ts
+          - stage: resilience-and-mobile-ux
+            specs: >-
+              steps/us05-screenshots.spec.ts
+              steps/us07-reconnection.spec.ts
+              steps/us18-19-compaction-model.spec.ts
+              steps/us20-lightbox-dismissal.spec.ts
+              steps/us21-swipe-independence.spec.ts
+              steps/us22-settings-layering.spec.ts
 
     steps:
       - name: Checkout
@@ -86,8 +123,8 @@ jobs:
           PICLAW_INTERNAL_SECRET: ${{ env.PICLAW_INTERNAL_SECRET }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run E2E tests
-        run: bun run test -- --project=desktop-chrome
+      - name: Run E2E tests (${{ matrix.stage }})
+        run: bun run test -- ${{ matrix.specs }} --project=desktop-chrome
         working-directory: tests/e2e
         env:
           PICLAW_E2E_URL: http://localhost:3000
@@ -103,7 +140,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-report
+          name: e2e-report-${{ matrix.stage }}
           path: |
             tests/e2e/reports/piclaw-e2e-report.pdf
             tests/e2e/reports/piclaw-e2e-report.html
@@ -114,7 +151,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-results
+          name: e2e-results-${{ matrix.stage }}
           path: tests/e2e/test-results/
           retention-days: 7
 
