@@ -19,6 +19,13 @@ Feature: Terminal pane — standalone mode
     Then the terminal should display file listing output
     And the output should contain column-aligned permissions and filenames
 
+  Scenario: Terminal opens clean without IME active
+    Given a terminal pane is freshly opened
+    Then no IME composition should be active
+    And the input mode should not be CJK
+    And typing plain ASCII "echo test123" should produce exactly that text
+    And no CJK composition artifacts should appear in the output
+
   Scenario: Close terminal via tab close button (click)
     Given a terminal pane is open as a tab
     When I click the close button on the terminal tab

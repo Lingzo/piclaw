@@ -95,6 +95,70 @@ test.describe('US-13: Terminal Standalone', () => {
     expect(hasLsOutput).toBe(true);
   });
 
+  test('terminal opens clean without IME active', async ({ authedPage: page }) => {
+    await openTerminal(page);
+
+    const terminal = page.locator('.xterm, .terminal-container, [data-testid="terminal"]');
+    if (!(await terminal.isVisible())) {
+      test.skip(undefined, 'Terminal pane not available');
+      return;
+    }
+
+    // Check that no IME composition is active on the terminal input element
+    const imeState = await page.evaluate(() => {
+      // ghostty-web uses a container with tabindex or a hidden input element
+      const container = document.querySelector('.xterm, .terminal-container, [data-testid="terminal"]');
+      if (!container) return { clean: false, reason: 'no container' };
+
+      // Check for any active composition indicators
+      const inputEl = container.querySelector('input, textarea') as HTMLInputElement | null;
+      const containerEl = container as HTMLElement;
+
+      // 1. No composition event should be in progress
+      // (check for presence of ime-mode or composing data attributes)
+      const hasComposingAttr = containerEl.dataset.composing === 'true' ||
+        containerEl.getAttribute('aria-composing') === 'true';
+
+      // 2. Input element (if any) should have inputMode="none" or "text" (not CJK)
+      const inputMode = inputEl?.inputMode || containerEl.getAttribute('inputmode') || '';
+      const hasCjkInputMode = ['ja', 'zh', 'ko'].some(lang =>
+        inputMode.includes(lang) || containerEl.lang?.startsWith(lang)
+      );
+
+      // 3. No visible IME candidate window or composition text
+      const compositionText = document.querySelector('[data-composition], .ime-composition, .composition-text');
+
+      // 4. Check the ghostty runtime state if accessible
+      const ghosttyState = (containerEl as any).__ghosttyInputHandler;
+      const isComposing = ghosttyState?.isComposing === true;
+
+      return {
+        clean: !hasComposingAttr && !hasCjkInputMode && !compositionText && !isComposing,
+        hasComposingAttr,
+        hasCjkInputMode,
+        hasCompositionText: !!compositionText,
+        isComposing,
+        inputMode,
+        lang: containerEl.lang || document.documentElement.lang,
+      };
+    });
+
+    expect(imeState.clean).toBe(true);
+
+    // Also verify: typing plain ASCII produces exactly what was typed
+    await terminal.click();
+    await page.waitForTimeout(300);
+    await page.keyboard.type('echo test123');
+    await page.waitForTimeout(500);
+
+    const termContent = await getTerminalState(page);
+    // Should contain the exact ASCII text (not garbled CJK)
+    expect(termContent.textContent).toContain('echo test123');
+    // Should NOT contain CJK composition artifacts
+    const hasCjkArtifacts = /[\u3000-\u9fff\uff00-\uffef]{2,}/.test(termContent.textContent);
+    expect(hasCjkArtifacts).toBe(false);
+  });
+
   test('close terminal via tab close button', async ({ authedPage: page }) => {
     await openTerminal(page);
 
