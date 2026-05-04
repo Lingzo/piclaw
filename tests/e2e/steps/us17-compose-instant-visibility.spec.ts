@@ -3,7 +3,7 @@ import { sel } from '../support/selectors';
 
 // US-17: Compose Submission Instant Visibility
 //
-// Flow: user types → Enter → POST /agent/chat → SSE new_post event
+// Flow: user types → Enter → POST /agent/default/message → SSE new_post event
 //   → appendUniqueTimelinePost() → scrollToBottom()
 // The POST response also returns the message ID for scroll-into-view.
 //
