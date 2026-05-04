@@ -200,6 +200,19 @@
 - Delete animation (`.removing` class) plays before removal
 - No accidental deletion from drag/swipe gestures
 
+### US-17: Compose Submission Instant Visibility
+> As a user sending messages, I want my submitted text to appear instantly in the timeline without waiting for the agent to respond, so that I have immediate confirmation my message was received.
+
+**Acceptance criteria:**
+- Message appears in timeline within 1 second of pressing Enter
+- Compose box clears immediately after submission
+- Compose box stays focused and editable after send
+- Multiple rapid submissions all appear in correct order
+- Long multi-line messages appear completely (not truncated)
+- Timeline auto-scrolls to bottom to show new message
+- User message visible before agent response arrives (SSE `new_post` event)
+- Message with file attachment shows attachment indicator immediately
+
 ---
 
 ## Priority Matrix
@@ -222,6 +235,7 @@
 | US-14 Terminal dock | ★★ | ★ | ★★★ | Frequent (desktop) | Medium |
 | US-15 Terminal zen mode | ★★ | ★ | ★★★ | Occasional | Medium |
 | US-16 Message deletion | ★★★ | ★★ | ★★ | Frequent | High |
+| US-17 Compose instant visibility | ★★★ | ★★★ | ★★★ | Every message | Very high |
 
 ## Test implementation priority
 
@@ -241,3 +255,4 @@
 14. **US-14** — Terminal dock (beneath editor)
 15. **US-15** — Terminal zen mode
 16. **US-16** — Message deletion from timeline
+17. **US-17** — Compose submission instant visibility
