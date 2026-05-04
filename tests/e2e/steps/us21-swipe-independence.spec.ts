@@ -54,8 +54,7 @@ async function simulateSwipe(page: import('@playwright/test').Page, startX: numb
 }
 
 test.describe('US-21: Session Swipe Independence', () => {
-  // Use iPad device profile for touch
-  test.use({ ...require('@playwright/test').devices['iPad Pro 11'] });
+  // These tests simulate touch events programmatically — device profile not needed
 
   test('swipe works on the timeline area', async ({ authedPage: page }) => {
     await page.waitForSelector(sel.timeline);
