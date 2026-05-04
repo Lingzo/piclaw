@@ -259,6 +259,7 @@ const groupDefinitions: GroupDefinition[] = [
         "http-dispatch-agent.test.ts",
         "agent-error-classification.test.ts",
         "http-dispatch-agent-push-presence.test.ts",
+        "http-dispatch-agent-scheduled-tasks.test.ts",
         "http-dispatch-auth.test.ts",
         "http-dispatch-content.test.ts",
         "http-dispatch-media.test.ts",
