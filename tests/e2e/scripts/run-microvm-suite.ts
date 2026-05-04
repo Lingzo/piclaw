@@ -18,10 +18,15 @@ const MICROVM_URL = process.env.PICLAW_E2E_URL || "http://192.168.1.78:8080";
 const PROJECT = process.argv.includes("--project")
   ? process.argv[process.argv.indexOf("--project") + 1]
   : "desktop-chrome";
+const WORKERS = process.argv.includes("--workers")
+  ? process.argv[process.argv.indexOf("--workers") + 1]
+  : (process.env.PICLAW_E2E_WORKERS || "1");
+const RUN_TIMEOUT_MS = Number.parseInt(process.env.PICLAW_E2E_RUN_TIMEOUT_MS || "900000", 10);
 
 console.log(`\n=== PiClaw E2E Suite — microVM ===`);
 console.log(`Target: ${MICROVM_URL}`);
 console.log(`Project: ${PROJECT}`);
+console.log(`Workers: ${WORKERS}`);
 console.log(`Time: ${new Date().toISOString()}\n`);
 
 // 1. Verify reachable
@@ -80,19 +85,21 @@ const env = {
   ...process.env,
   PICLAW_E2E_URL: MICROVM_URL,
   PICLAW_INTERNAL_SECRET: internalSecret,
+  PICLAW_E2E_WORKERS: WORKERS,
   PLAYWRIGHT_BROWSERS_PATH: "/workspace/.cache/ms-playwright",
 };
 
 const testResult = spawnSync("bunx", [
   "playwright", "test",
   "--project", PROJECT,
+  "--workers", WORKERS,
   "--reporter", "json,list",
   "--output", "reports/results.json",
 ], {
   cwd: "/workspace/piclaw/tests/e2e",
   env,
   stdio: "inherit",
-  timeout: 300000, // 5 minutes
+  timeout: Number.isFinite(RUN_TIMEOUT_MS) ? RUN_TIMEOUT_MS : 900000, // default 15 minutes
 });
 
 console.log(`\nPlaywright exit code: ${testResult.status}`);

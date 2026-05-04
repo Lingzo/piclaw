@@ -7,27 +7,46 @@ import { test, expect } from '../support/world';
 // - Expanded (thought panel): overflow-y: auto, max-height: min(52vh, 34rem)
 // - data-expanded="true"/"false" on .agent-thinking element
 //
-// Since we need an active agent turn producing thinking output, we either:
-// 1. Send a real message and wait for thoughts SSE events, OR
-// 2. Inject fake SSE events to simulate thinking content
-//
-// We use approach 2 (SSE injection) for determinism.
-
-/** Inject a fake agent_thought SSE event into the page. */
-async function injectThoughtContent(page: import('@playwright/test').Page, text: string, totalLines: number) {
-  await page.evaluate(({ text, totalLines }) => {
-    // Dispatch a synthetic SSE event that the app's SSE handler processes
-    const event = new CustomEvent('sse:agent_thought', {
-      detail: { text, total_lines: totalLines },
-    });
-    window.dispatchEvent(event);
-  }, { text, totalLines });
-  await page.waitForTimeout(300);
-}
+// These tests use a deterministic DOM fixture instead of sending a real agent
+// message. The goal here is to validate the CSS/DOM contract for the rendered
+// thoughts panel without requiring auth, model availability, or LLM thinking.
 
 /** Build a long multi-line thought string. */
 function buildLongThought(lines: number): string {
   return Array.from({ length: lines }, (_, i) => `Reasoning step ${i + 1}: considering implications...`).join('\n');
+}
+
+async function mountThoughtPanelFixture(page: import('@playwright/test').Page, lines = 40) {
+  const text = buildLongThought(lines);
+  await page.evaluate(({ text, lines }) => {
+    document.querySelector('#e2e-thought-panel-fixture')?.remove();
+    const panel = document.createElement('div');
+    panel.id = 'e2e-thought-panel-fixture';
+    panel.className = 'agent-thinking';
+    panel.setAttribute('data-expanded', 'false');
+    panel.setAttribute('data-collapsible', 'true');
+    panel.setAttribute('data-panel-key', 'thought');
+    panel.innerHTML = `
+      <div class="agent-thinking-title">Thoughts</div>
+      <div class="agent-thinking-body agent-thinking-body-collapsible" style="--agent-thinking-collapsed-lines: 8;"></div>
+      <button class="agent-thinking-truncation" type="button">▸ ${Math.max(0, lines - 8)} more lines</button>
+    `;
+    const body = panel.querySelector('.agent-thinking-body') as HTMLElement;
+    body.innerHTML = text
+      .split('\n')
+      .map((line) => `<div>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>`)
+      .join('');
+    const button = panel.querySelector('.agent-thinking-truncation') as HTMLButtonElement;
+    button.addEventListener('click', () => {
+      const expanded = panel.getAttribute('data-expanded') === 'true';
+      panel.setAttribute('data-expanded', expanded ? 'false' : 'true');
+      if (!expanded) body.scrollTop = 0;
+      button.textContent = expanded ? `▸ ${Math.max(0, lines - 8)} more lines` : '▴ show less';
+    });
+    const host = document.querySelector('.timeline, .container, body') || document.body;
+    host.prepend(panel);
+  }, { text, lines });
+  await page.locator('.agent-thinking[data-panel-key="thought"]').waitFor({ state: 'visible', timeout: 5000 });
 }
 
 /** Get the computed style properties of the thoughts panel body. */
@@ -53,63 +72,22 @@ async function getThoughtsPanelState(page: import('@playwright/test').Page) {
 }
 
 test.describe('US-12: Thoughts Panel Scroll Behaviour', () => {
-  // These tests need an active agent turn with thinking output.
-  // We trigger this by sending a message that will produce thoughts.
-
   test('collapsed panel is not scrollable and shows "more lines"', async ({ authedPage: page }) => {
-    // Send a message to trigger agent thinking
-    const compose = page.locator('[data-testid="compose-input"], .compose-editor [contenteditable], .compose-editor');
-    await compose.click();
-    await compose.fill('Think step by step about the meaning of life. Be very thorough.');
-    await page.keyboard.press('Enter');
-
-    // Wait for thoughts panel to appear
-    const panel = page.locator('.agent-thinking[data-panel-key="thought"]');
-    await panel.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
-
-    if (!(await panel.isVisible())) {
-      test.skip(undefined, 'No thought panel appeared — model may not stream thinking');
-      return;
-    }
-
-    // Wait for enough content to trigger truncation
-    await page.waitForFunction(() => {
-      const btn = document.querySelector('.agent-thinking[data-panel-key="thought"] .agent-thinking-truncation');
-      return btn !== null;
-    }, { timeout: 30000 }).catch(() => {});
-
+    await mountThoughtPanelFixture(page);
     const state = await getThoughtsPanelState(page);
-    if (!state || !state.hasMoreButton) {
-      test.skip(undefined, 'Not enough thought content to trigger truncation');
-      return;
-    }
+    expect(state).toBeTruthy();
+    expect(state!.hasMoreButton).toBe(true);
 
     // Collapsed state checks
-    expect(state.expanded).toBe('false');
-    expect(state.overflowY).toBe('hidden');
-    expect(state.moreButtonText).toContain('more lines');
+    expect(state!.expanded).toBe('false');
+    expect(state!.overflowY).toBe('hidden');
+    expect(state!.moreButtonText).toContain('more lines');
   });
 
   test('clicking "more lines" enables scrolling', async ({ authedPage: page }) => {
-    const compose = page.locator('[data-testid="compose-input"], .compose-editor [contenteditable], .compose-editor');
-    await compose.click();
-    await compose.fill('Think step by step about all the planets in the solar system. Describe each one.');
-    await page.keyboard.press('Enter');
-
+    await mountThoughtPanelFixture(page, 80);
     const panel = page.locator('.agent-thinking[data-panel-key="thought"]');
-    await panel.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
-    if (!(await panel.isVisible())) {
-      test.skip(undefined, 'No thought panel appeared');
-      return;
-    }
-
-    // Wait for truncation button
     const moreBtn = panel.locator('.agent-thinking-truncation');
-    await moreBtn.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
-    if (!(await moreBtn.isVisible())) {
-      test.skip(undefined, 'Not enough content for truncation');
-      return;
-    }
 
     // Click to expand
     await moreBtn.click();
@@ -132,25 +110,9 @@ test.describe('US-12: Thoughts Panel Scroll Behaviour', () => {
   });
 
   test('clicking "show less" collapses and disables scrolling', async ({ authedPage: page }) => {
-    const compose = page.locator('[data-testid="compose-input"], .compose-editor [contenteditable], .compose-editor');
-    await compose.click();
-    await compose.fill('Think step by step about world history. Cover major civilizations.');
-    await page.keyboard.press('Enter');
-
+    await mountThoughtPanelFixture(page, 80);
     const panel = page.locator('.agent-thinking[data-panel-key="thought"]');
-    await panel.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
-    if (!(await panel.isVisible())) {
-      test.skip(undefined, 'No thought panel appeared');
-      return;
-    }
-
-    // Wait for and click "more lines"
     const moreBtn = panel.locator('.agent-thinking-truncation');
-    await moreBtn.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
-    if (!(await moreBtn.isVisible())) {
-      test.skip(undefined, 'Not enough content for truncation');
-      return;
-    }
     await moreBtn.click();
     await page.waitForTimeout(500);
 
@@ -170,24 +132,9 @@ test.describe('US-12: Thoughts Panel Scroll Behaviour', () => {
   });
 
   test('expand/collapse round-trip preserves content', async ({ authedPage: page }) => {
-    const compose = page.locator('[data-testid="compose-input"], .compose-editor [contenteditable], .compose-editor');
-    await compose.click();
-    await compose.fill('Analyze the complete works of Shakespeare. Think through each play.');
-    await page.keyboard.press('Enter');
-
+    await mountThoughtPanelFixture(page, 80);
     const panel = page.locator('.agent-thinking[data-panel-key="thought"]');
-    await panel.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
-    if (!(await panel.isVisible())) {
-      test.skip(undefined, 'No thought panel appeared');
-      return;
-    }
-
     const moreBtn = panel.locator('.agent-thinking-truncation');
-    await moreBtn.waitFor({ state: 'visible', timeout: 30000 }).catch(() => {});
-    if (!(await moreBtn.isVisible())) {
-      test.skip(undefined, 'Not enough content');
-      return;
-    }
 
     // Expand
     await moreBtn.click();

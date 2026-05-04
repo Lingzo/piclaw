@@ -1,10 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const workers = Math.max(1, Number.parseInt(process.env.PICLAW_E2E_WORKERS || '1', 10) || 1);
+const timeout = Math.max(10_000, Number.parseInt(process.env.PICLAW_E2E_TEST_TIMEOUT_MS || '30000', 10) || 30_000);
+
 export default defineConfig({
   testDir: './steps',
-  timeout: 30_000,
+  timeout,
   retries: 1,
-  workers: 1, // serialize for stable UX assertions
+  workers, // default serial for stable UX assertions; override with PICLAW_E2E_WORKERS for split/fast runs
   reporter: [
     ['html', { outputFolder: './reports/html', open: 'never' }],
     ['json', { outputFile: './reports/results.json' }],

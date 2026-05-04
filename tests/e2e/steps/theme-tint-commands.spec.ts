@@ -17,13 +17,34 @@ import { sel } from '../support/selectors';
 //   dracula, catppuccin, nord, gruvbox, solarized, tokyo, miasma, github, gotham
 // "dark" and "light" are NOT valid theme names.
 
-/** Send a slash command and wait for it to take effect. */
+/** Send a slash command and wait for the authenticated POST to complete. */
 async function sendCommand(page: import('@playwright/test').Page, cmd: string) {
+  const responsePromise = page.waitForResponse(
+    (response) => response.url().includes('/agent/chat') && response.request().method() === 'POST',
+    { timeout: 10_000 },
+  ).catch(() => null);
   const compose = page.locator(sel.composeInput);
   await compose.click();
   await compose.fill(cmd);
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(1500);
+  const response = await responsePromise;
+  if (response && !response.ok()) {
+    throw new Error(`${cmd} failed with HTTP ${response.status()}: ${await response.text().catch(() => '')}`);
+  }
+  await page.waitForTimeout(500);
+}
+
+async function waitForThemeState(
+  page: import('@playwright/test').Page,
+  expected: Partial<{ dataTheme: string; dataColorTheme: string; dataTint: string }>,
+) {
+  await page.waitForFunction((expectedState) => {
+    const root = document.documentElement;
+    if (expectedState.dataTheme !== undefined && root.dataset.theme !== expectedState.dataTheme) return false;
+    if (expectedState.dataColorTheme !== undefined && root.dataset.colorTheme !== expectedState.dataColorTheme) return false;
+    if (expectedState.dataTint !== undefined && (root.dataset.tint || '') !== expectedState.dataTint) return false;
+    return true;
+  }, expected, { timeout: 10_000 });
 }
 
 /** Read the current theme state from the DOM. */
@@ -71,6 +92,7 @@ test.describe('/theme command', () => {
 
     // Switch to ristretto
     await sendCommand(page, '/theme ristretto');
+    await waitForThemeState(page, { dataTheme: 'dark', dataColorTheme: 'ristretto', dataTint: '' });
     const after = await getThemeState(page);
     const bgAfter = await getRenderedBgColor(page);
 
@@ -98,12 +120,14 @@ test.describe('/theme command', () => {
   test('/theme default restores from ristretto with visible color change', async ({ authedPage: page }) => {
     // Set ristretto first
     await sendCommand(page, '/theme ristretto');
+    await waitForThemeState(page, { dataColorTheme: 'ristretto' });
     const dark = await getThemeState(page);
     const bgDark = await getRenderedBgColor(page);
     expect(dark.dataColorTheme).toBe('ristretto');
 
     // Restore default
     await sendCommand(page, '/theme default');
+    await waitForThemeState(page, { dataColorTheme: 'default', dataTint: '' });
     const restored = await getThemeState(page);
     const bgRestored = await getRenderedBgColor(page);
 
@@ -153,6 +177,7 @@ test.describe('/theme command', () => {
 
   test('/theme survives page refresh', async ({ authedPage: page }) => {
     await sendCommand(page, '/theme ristretto');
+    await waitForThemeState(page, { dataColorTheme: 'ristretto' });
     expect((await getThemeState(page)).dataColorTheme).toBe('ristretto');
 
     await page.reload({ waitUntil: 'networkidle' });
@@ -161,6 +186,22 @@ test.describe('/theme command', () => {
     const after = await getThemeState(page);
     expect(after.storedTheme).toBe('ristretto');
     expect(after.dataTheme).toBe('dark');
+  });
+
+  test('/theme changes are delivered to another connected browser via SSE', async ({ authedPage: page }) => {
+    const other = await page.context().newPage();
+    try {
+      await other.goto(process.env.PICLAW_E2E_URL || 'http://localhost:8080');
+      await other.waitForLoadState('domcontentloaded');
+      await other.waitForSelector('.compose-box, .compose-editor, [data-testid="compose-box"]', { timeout: 60_000 });
+
+      await sendCommand(page, '/theme ristretto');
+      await waitForThemeState(page, { dataColorTheme: 'ristretto' });
+      await waitForThemeState(other, { dataColorTheme: 'ristretto' });
+    } finally {
+      await other.close().catch(() => {});
+      await sendCommand(page, '/theme default');
+    }
   });
 });
 
@@ -182,6 +223,7 @@ test.describe('/tint command on default theme', () => {
     const bgBefore = await getRenderedBgColor(page);
 
     await sendCommand(page, '/tint #e11d48');
+    await waitForThemeState(page, { dataColorTheme: 'default', dataTint: '#e11d48' });
     const after = await getThemeState(page);
     const bgAfter = await getRenderedBgColor(page);
 
@@ -209,6 +251,7 @@ test.describe('/tint command on default theme', () => {
 
   test('/tint orange applies named color on default theme', async ({ authedPage: page }) => {
     await sendCommand(page, '/tint orange');
+    await waitForThemeState(page, { dataColorTheme: 'default', dataTint: 'orange' });
     const after = await getThemeState(page);
 
     expect(after.dataColorTheme).toBe('default');
@@ -224,12 +267,14 @@ test.describe('/tint command on default theme', () => {
   test('/tint off clears tint and restores vanilla default', async ({ authedPage: page }) => {
     // Apply a tint first
     await sendCommand(page, '/tint #3b82f6');
+    await waitForThemeState(page, { dataTint: '#3b82f6' });
     const tinted = await getThemeState(page);
     expect(tinted.dataTint).toBe('#3b82f6');
     expect(tinted.bgPrimary).toBeTruthy(); // CSS vars applied
 
     // Clear it
     await sendCommand(page, '/tint off');
+    await waitForThemeState(page, { dataTint: '' });
     const cleared = await getThemeState(page);
 
     expect(cleared.dataTint).toBe('');
