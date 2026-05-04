@@ -10,6 +10,7 @@ test("createRepoDevCommandPlan resolves repo-root binaries for build, lint, and 
   const buildPlan = createRepoDevCommandPlan("build", "/workspace/piclaw/runtime");
   const lintPlan = createRepoDevCommandPlan("lint", "/workspace/piclaw/runtime");
   const typecheckPlan = createRepoDevCommandPlan("typecheck", "/workspace/piclaw/runtime");
+  const scriptTypecheckPlan = createRepoDevCommandPlan("typecheck:scripts", "/workspace/piclaw/runtime");
 
   expect(buildPlan.cwd).toBe("/workspace/piclaw/runtime");
   expect(buildPlan.binaryPath).toBe("/workspace/piclaw/node_modules/typescript/bin/tsc");
@@ -29,6 +30,10 @@ test("createRepoDevCommandPlan resolves repo-root binaries for build, lint, and 
   expect(typecheckPlan.cwd).toBe("/workspace/piclaw/runtime");
   expect(typecheckPlan.binaryPath).toBe("/workspace/piclaw/node_modules/typescript/bin/tsc");
   expect(typecheckPlan.args).toEqual(["--noEmit", "-p", "tsconfig.json"]);
+
+  expect(scriptTypecheckPlan.cwd).toBe("/workspace/piclaw/runtime");
+  expect(scriptTypecheckPlan.binaryPath).toBe("/workspace/piclaw/node_modules/typescript/bin/tsc");
+  expect(scriptTypecheckPlan.args).toEqual(["--noEmit", "-p", "tsconfig.scripts.json"]);
 });
 
 test("resolveRepoBinary points at the repo-local node_modules bin directory", () => {
