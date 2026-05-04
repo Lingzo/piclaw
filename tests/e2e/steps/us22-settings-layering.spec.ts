@@ -32,7 +32,7 @@ test.describe('US-22: Settings Dialog Layering', () => {
     await page.waitForSelector(sel.settingsDialog, { timeout: 5000 });
 
     // Backdrop should be visible
-    const backdrop = page.locator('.settings-dialog-backdrop');
+    const backdrop = page.locator('.settings-dialog-backdrop').first();
     await expect(backdrop).toBeVisible();
 
     // Backdrop should cover the full viewport
@@ -48,7 +48,7 @@ test.describe('US-22: Settings Dialog Layering', () => {
     await page.keyboard.press('Meta+Comma');
     await page.waitForSelector(sel.settingsDialog, { timeout: 5000 });
 
-    const backdrop = page.locator('.settings-dialog-backdrop');
+    const backdrop = page.locator('.settings-dialog-backdrop').first();
     const bg = await backdrop.evaluate((el) => getComputedStyle(el).backgroundColor);
 
     // Should be rgba with alpha ~0.5 (e.g. "rgba(0, 0, 0, 0.5)")
@@ -62,7 +62,7 @@ test.describe('US-22: Settings Dialog Layering', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('settings dialog z-index is above workspace', async ({ authedPage: page }) => {
+  test('settings dialog renders above workspace (stacking order)', async ({ authedPage: page }) => {
     await page.waitForSelector(sel.timeline);
 
     // Open workspace
@@ -77,17 +77,35 @@ test.describe('US-22: Settings Dialog Layering', () => {
     await page.keyboard.press('Meta+Comma');
     await page.waitForSelector(sel.settingsDialog, { timeout: 5000 });
 
-    // Get z-indices
-    const zIndices = await page.evaluate(() => {
+    // Verify settings is visually above workspace by checking:
+    // 1. The backdrop/portal has position:fixed (creates stacking context)
+    // 2. The dialog is visible and not obscured
+    const layering = await page.evaluate(() => {
       const portal = document.querySelector('.settings-portal') as HTMLElement;
+      const backdrop = document.querySelector('.settings-dialog-backdrop') as HTMLElement;
+      const dialog = document.querySelector('.settings-dialog') as HTMLElement;
       const workspace = document.querySelector('.workspace-sidebar, .workspace-explorer') as HTMLElement;
-      return {
-        portalZ: portal ? parseInt(getComputedStyle(portal).zIndex || '0', 10) : 0,
-        workspaceZ: workspace ? parseInt(getComputedStyle(workspace).zIndex || '0', 10) : 0,
-      };
+
+      const portalPosition = portal ? getComputedStyle(portal).position : 'none';
+      const backdropPosition = backdrop ? getComputedStyle(backdrop).position : 'none';
+      const dialogVisible = dialog ? dialog.offsetParent !== null : false;
+
+      // Check if dialog center point is the top-most element
+      if (dialog) {
+        const rect = dialog.getBoundingClientRect();
+        const topEl = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        const isDialogOnTop = dialog.contains(topEl) || dialog === topEl;
+        return { portalPosition, backdropPosition, dialogVisible, isDialogOnTop };
+      }
+      return { portalPosition, backdropPosition, dialogVisible, isDialogOnTop: false };
     });
 
-    expect(zIndices.portalZ).toBeGreaterThan(zIndices.workspaceZ);
+    // Portal or backdrop must be fixed (stacking context)
+    expect(layering.portalPosition === 'fixed' || layering.backdropPosition === 'fixed').toBe(true);
+    // Dialog must be visible
+    expect(layering.dialogVisible).toBe(true);
+    // Dialog must be the topmost element at its center
+    expect(layering.isDialogOnTop).toBe(true);
 
     await page.keyboard.press('Escape');
   });
