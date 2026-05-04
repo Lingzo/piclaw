@@ -377,8 +377,8 @@ export function resetTerminalImeState(terminal: any, terminalHost?: HTMLElement 
                 ? new ownerWindow.CompositionEvent('compositionend', { data: '' })
                 : new ownerWindow.Event('compositionend');
             element.dispatchEvent?.(event);
-        } catch (_error) {
-            // Best-effort IME cleanup for browsers that do not expose CompositionEvent.
+        } catch (error) {
+            console.debug('[terminal-pane] Failed to dispatch best-effort IME composition reset.', error);
         }
     }
 
