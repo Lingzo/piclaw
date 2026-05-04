@@ -263,6 +263,18 @@
 - Apple Pencil does not trigger swipe
 - Visual indicator shows adjacent session name during gesture
 
+### US-22: Settings Dialog Layering
+> As a user opening settings while the workspace pane is visible, I want the settings backdrop to be partially opaque and above all other elements, so that only the settings dialog is interactive and the rest is dimmed.
+
+**Acceptance criteria:**
+- Semi-transparent backdrop covers entire viewport when settings opens
+- Backdrop is above workspace pane (z-index: 2400 > workspace z-index)
+- Backdrop opacity is between 0.3 and 0.8 (dimmed but visible behind)
+- Workspace pane is not clickable through the backdrop
+- Settings dialog is fully visible (not clipped by workspace or any other pane)
+- Closing settings removes backdrop and restores workspace interactivity
+- No stacking context leakage from workspace tooltips (z-index: 9999)
+
 ---
 
 ## Priority Matrix
@@ -290,6 +302,7 @@
 | US-19 Model switching | ★★★ | ★★ | ★★★ | Frequent (dev) | High |
 | US-20 Lightbox dismissal | ★★★ | ★★★ | ★★ | Every image view | Medium |
 | US-21 Swipe independence | ★★★ | ★★★ | ★ | Every session switch (touch) | High |
+| US-22 Settings layering | ★★★ | ★★ | ★★★ | Every settings open | Medium |
 
 ## Test implementation priority
 
@@ -314,3 +327,4 @@
 19. **US-19** — Model switching after compaction
 20. **US-20** — Lightbox dismissal (any key/click/tap)
 21. **US-21** — Session swipe independence from visible elements
+22. **US-22** — Settings dialog layering above workspace
