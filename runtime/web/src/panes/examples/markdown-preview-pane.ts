@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * markdown-preview-pane.ts — Example readonly markdown preview pane.
  *

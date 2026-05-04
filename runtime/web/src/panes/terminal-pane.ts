@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * terminal-pane.ts — Terminal dock pane extension.
  *
@@ -77,7 +76,7 @@ async function withGhosttyWasmFetchShim(run) {
         }
         return originalFetch(wasmUrl, init);
     };
-    globalThis.fetch = patchedFetch;
+    globalThis.fetch = patchedFetch as typeof fetch;
     try {
         return await run();
     } finally {
