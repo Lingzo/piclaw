@@ -22,6 +22,11 @@ export interface CompactionLifecycleOptions {
 const DEFAULT_IDLE_AUTO_COMPACTION_DELAY_MS = 5_000;
 const idleAutoCompactionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+type CompactionOutcome<T> = { ok: true; result: T } | { ok: false; errorMessage: string };
+type ActiveCompaction = { outcome: Promise<CompactionOutcome<unknown>> };
+
+const activeCompactions = new Map<string, ActiveCompaction>();
+
 type AutoCompactionReason = "threshold" | "idle";
 
 function estimateMessageTokens(message: any): number {
@@ -209,7 +214,33 @@ export async function runCompactionWithTimeout<T>(
   chatJid: string,
   options: Pick<CompactionLifecycleOptions, "onWarn">,
   runCompact: () => Promise<T>,
-): Promise<{ ok: true; result: T } | { ok: false; errorMessage: string }> {
+): Promise<CompactionOutcome<T>> {
+  const existing = activeCompactions.get(chatJid);
+  if (existing) {
+    options.onWarn?.("Compaction already in progress; joining existing compaction", {
+      operation: "run_agent.join_active_compaction",
+      chatJid,
+    });
+    return await existing.outcome as CompactionOutcome<T>;
+  }
+
+  const active: ActiveCompaction = { outcome: Promise.resolve({ ok: false, errorMessage: "Compaction did not start" }) };
+  const clearActive = () => {
+    if (activeCompactions.get(chatJid) === active) activeCompactions.delete(chatJid);
+  };
+  const outcome = runCompactionWithTimeoutExclusive(session, chatJid, options, runCompact, clearActive);
+  active.outcome = outcome as Promise<CompactionOutcome<unknown>>;
+  activeCompactions.set(chatJid, active);
+  return await outcome;
+}
+
+async function runCompactionWithTimeoutExclusive<T>(
+  session: AgentSession,
+  chatJid: string,
+  options: Pick<CompactionLifecycleOptions, "onWarn">,
+  runCompact: () => Promise<T>,
+  clearActive: () => void,
+): Promise<CompactionOutcome<T>> {
   const timeoutMs = getCompactionTimeoutMs();
   updateSessionCompacting(chatJid, true);
   if (timeoutMs <= 0) {
@@ -219,28 +250,30 @@ export async function runCompactionWithTimeout<T>(
       return { ok: false, errorMessage: error instanceof Error ? error.message : String(error) };
     } finally {
       updateSessionCompacting(chatJid, false);
+      clearActive();
     }
   }
 
-  const compactionOutcome = new Promise<{ ok: true; result: T } | { ok: false; errorMessage: string }>((resolve) => {
-    void Promise.resolve()
-      .then(() => runCompact())
-      .then((result) => resolve({ ok: true, result }))
-      .catch((error) => resolve({
-        ok: false,
-        errorMessage: error instanceof Error ? error.message : String(error),
-      }))
-      .finally(() => updateSessionCompacting(chatJid, false));
-  });
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const compactionOutcome = Promise.resolve()
+    .then(() => runCompact())
+    .then((result): CompactionOutcome<T> => ({ ok: true, result }))
+    .catch((error): CompactionOutcome<T> => ({
+      ok: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    }))
+    .finally(() => {
+      if (timeoutId) clearTimeout(timeoutId);
+      updateSessionCompacting(chatJid, false);
+      clearActive();
+    });
 
   const timedOut = Symbol("compaction-timeout");
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeoutOutcome = new Promise<typeof timedOut>((resolve) => {
     timeoutId = setTimeout(() => resolve(timedOut), timeoutMs);
   });
 
   const outcome = await Promise.race([compactionOutcome, timeoutOutcome]);
-  if (timeoutId) clearTimeout(timeoutId);
   if (outcome !== timedOut) {
     return outcome;
   }
