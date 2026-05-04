@@ -676,7 +676,7 @@ export function installWebChannelPrototype(
     serveStatic: {
       configurable: true,
       writable: true,
-      value: withHttpSurface(async (service, relPath: string) => await service.serveStatic(relPath)),
+      value: withHttpSurface(async (service, relPath: string, req?: Request) => await service.serveStatic(relPath, req)),
     },
     serveDocsStatic: {
       configurable: true,
