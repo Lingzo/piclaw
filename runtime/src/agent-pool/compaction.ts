@@ -12,6 +12,7 @@ import {
   type ChatCompactionBackoffState,
 } from "../db.js";
 import { formatTimeoutDuration } from "./prompt-utils.js";
+import { updateSessionCompacting } from "../extensions/session-status.js";
 
 export interface CompactionLifecycleOptions {
   onInfo?: (message: string, details: Record<string, unknown>) => void;
@@ -64,10 +65,20 @@ function estimateMessageTokens(message: any): number {
 }
 
 export function estimateContextTokensFromSession(session: AgentSession): number {
-  const usage = session.getContextUsage?.();
-  if (typeof usage?.tokens === "number") return usage.tokens;
-
   const context = session.sessionManager.buildSessionContext();
+  const hasCompactionSummary = context.messages.some((message: any) => message?.role === "compactionSummary");
+
+  // Assistant usage metadata is scoped to the prompt that produced that
+  // assistant message. After a compaction, kept assistant messages can still
+  // carry pre-compaction usage totals, so trusting getContextUsage()/last usage
+  // makes the freshly compacted context look huge and triggers repeated idle
+  // compactions. Once a compacted summary is present, estimate the resolved
+  // compacted context directly from the messages instead.
+  if (!hasCompactionSummary) {
+    const usage = session.getContextUsage?.();
+    if (typeof usage?.tokens === "number") return usage.tokens;
+  }
+
   return context.messages.reduce((total: number, message: any) => total + estimateMessageTokens(message), 0);
 }
 
@@ -200,11 +211,14 @@ export async function runCompactionWithTimeout<T>(
   runCompact: () => Promise<T>,
 ): Promise<{ ok: true; result: T } | { ok: false; errorMessage: string }> {
   const timeoutMs = getCompactionTimeoutMs();
+  updateSessionCompacting(chatJid, true);
   if (timeoutMs <= 0) {
     try {
       return { ok: true, result: await runCompact() };
     } catch (error) {
       return { ok: false, errorMessage: error instanceof Error ? error.message : String(error) };
+    } finally {
+      updateSessionCompacting(chatJid, false);
     }
   }
 
@@ -215,7 +229,8 @@ export async function runCompactionWithTimeout<T>(
       .catch((error) => resolve({
         ok: false,
         errorMessage: error instanceof Error ? error.message : String(error),
-      }));
+      }))
+      .finally(() => updateSessionCompacting(chatJid, false));
   });
 
   const timedOut = Symbol("compaction-timeout");
@@ -231,6 +246,7 @@ export async function runCompactionWithTimeout<T>(
   }
 
   await abortCompactionBestEffort(session, chatJid, options);
+  updateSessionCompacting(chatJid, false);
   return {
     ok: false,
     errorMessage: `Compaction timed out after ${formatTimeoutDuration(timeoutMs)}`,
