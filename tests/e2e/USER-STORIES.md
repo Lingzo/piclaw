@@ -150,6 +150,40 @@
 - Content is preserved across expand/collapse round-trips
 - Scroll position resets to top on re-expand
 
+### US-13: Terminal Standalone
+> As a user, I want to open a terminal pane standalone without garbled display, execute commands like `ls -al`, close it cleanly via click or tap, and pop it out to a separate window on desktop.
+
+**Acceptance criteria:**
+- Terminal opens without garbled characters or mojibake
+- Blinking cursor visible on open
+- `ls -al` produces column-aligned output with permissions
+- Close button on tab works via click and tap
+- Pop-out button opens terminal in separate window (desktop)
+- Terminal background/foreground updates when UI theme changes
+
+### US-14: Terminal Dock (beneath editor)
+> As a user editing files, I want a terminal docked below the editor that I can toggle, resize, and use alongside the editor without focus conflicts.
+
+**Acceptance criteria:**
+- Ctrl+` toggles dock visibility
+- Tab strip dock toggle button works
+- Dock splitter is draggable (resizes terminal vs editor)
+- Terminal and editor have independent focus
+- Dock is hidden in zen mode
+- Terminal in dock is interactive (can type and see output)
+
+### US-15: Terminal Zen Mode
+> As a user wanting focused terminal or editor work, I want zen mode to hide all chrome and provide a permanently visible exit indicator in the top-right corner.
+
+**Acceptance criteria:**
+- Zen mode hides workspace sidebar, chat container, dock
+- Editor/terminal fills viewport
+- Zen exit indicator permanently visible (not hover-dependent) in top-right corner
+- Clicking indicator exits zen mode
+- Escape key exits zen mode
+- Tab strip hidden by default, revealed on hover near top edge
+- Minimum 44×44px tap target on exit indicator for touch devices
+
 ---
 
 ## Priority Matrix
@@ -168,6 +202,9 @@
 | US-10 Workspace files | ★★ | ★ | ★★ | Low-Medium | Medium |
 | US-11 PWA manifest | ★★★ | ★★★ | ★ | Every install | Medium |
 | US-12 Thoughts panel | ★★★ | ★★ | ★★★ | Every turn with thinking | Medium |
+| US-13 Terminal standalone | ★★★ | ★★ | ★★★ | Frequent | High |
+| US-14 Terminal dock | ★★ | ★ | ★★★ | Frequent (desktop) | Medium |
+| US-15 Terminal zen mode | ★★ | ★ | ★★★ | Occasional | Medium |
 
 ## Test implementation priority
 
@@ -183,3 +220,6 @@
 10. **US-10** — Workspace files
 11. **US-11** — PWA manifest & icons
 12. **US-12** — Thoughts panel scroll behaviour
+13. **US-13** — Terminal standalone
+14. **US-14** — Terminal dock (beneath editor)
+15. **US-15** — Terminal zen mode
