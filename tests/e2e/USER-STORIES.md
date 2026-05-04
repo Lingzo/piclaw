@@ -237,6 +237,18 @@
 - Context usage recalculates for the new model's context window
 - No delay or blocked state between compaction end and model switch
 
+### US-20: Lightbox Dismissal
+> As a user viewing attachments in the lightbox, I want to dismiss it by any key press, click, or tap anywhere, so that I can quickly return to the conversation without hunting for a close button.
+
+**Acceptance criteria:**
+- Escape key dismisses (already works)
+- Any other key press (Space, Enter, letters, arrows) dismisses
+- Click on dark backdrop dismisses (already works)
+- Click directly on the image/content itself dismisses (currently blocked by stopPropagation)
+- Tap anywhere on touch device dismisses
+- Close button still works as explicit fallback
+- Lightbox stays closed after dismissal (no flicker/re-render)
+
 ---
 
 ## Priority Matrix
@@ -262,6 +274,7 @@
 | US-17 Compose instant visibility | ★★★ | ★★★ | ★★★ | Every message | Very high |
 | US-18 Compaction indicator | ★★★ | ★★ | ★★★ | Every compaction | High |
 | US-19 Model switching | ★★★ | ★★ | ★★★ | Frequent (dev) | High |
+| US-20 Lightbox dismissal | ★★★ | ★★★ | ★★ | Every image view | Medium |
 
 ## Test implementation priority
 
@@ -284,3 +297,4 @@
 17. **US-17** — Compose submission instant visibility
 18. **US-18** — Compaction indicator instant updates
 19. **US-19** — Model switching after compaction
+20. **US-20** — Lightbox dismissal (any key/click/tap)
