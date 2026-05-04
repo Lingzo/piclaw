@@ -1,6 +1,9 @@
 import { test, expect } from '../support/world';
 import { sel } from '../support/selectors';
 
+const CHAT_POST_TIMEOUT_MS = 8_000;
+const AGENT_REPLY_TIMEOUT_MS = 5_000;
+
 // US-16: Message Deletion from Timeline
 //
 // Delete flow:
@@ -27,18 +30,39 @@ function deleteButtonFor(page: import('@playwright/test').Page, postSelector: st
   return page.locator(`${postSelector} .post-delete-btn, ${postSelector} [aria-label="Delete message"]`);
 }
 
-/** Send a message and wait for it to appear in the timeline. */
+/** Send a message and wait for the authenticated chat POST plus timeline echo. */
 async function sendMessage(page: import('@playwright/test').Page, text: string) {
+  const userPostCount = await page.locator('.post:not(.agent-post)').count();
+  const responsePromise = page.waitForResponse(
+    (response) => response.url().includes('/agent/chat') && response.request().method() === 'POST',
+    { timeout: CHAT_POST_TIMEOUT_MS },
+  ).catch(() => null);
+
   const compose = page.locator(sel.composeInput);
   await compose.click();
   await compose.fill(text);
   await page.keyboard.press('Enter');
-  // Wait for the message to appear
-  await page.waitForTimeout(2000);
+
+  const response = await responsePromise;
+  if (!response) {
+    throw new Error(`No /agent/chat response observed for ${JSON.stringify(text)}; E2E auth/session bootstrap may be missing.`);
+  }
+  if (!response.ok()) {
+    throw new Error(`/agent/chat failed with HTTP ${response.status()} for ${JSON.stringify(text)}: ${await response.text().catch(() => '')}`);
+  }
+
+  await page.waitForFunction(
+    ({ previousCount, expectedText }) => {
+      const userPosts = Array.from(document.querySelectorAll('.post:not(.agent-post)'));
+      return userPosts.length > previousCount && userPosts.some((post) => post.textContent?.includes(expectedText));
+    },
+    { previousCount: userPostCount, expectedText: text },
+    { timeout: CHAT_POST_TIMEOUT_MS },
+  );
 }
 
-/** Wait for agent response to a message. */
-async function waitForAgentReply(page: import('@playwright/test').Page, timeoutMs = 30000) {
+/** Wait briefly for an agent response; deletion tests can continue/skip cascade checks without one. */
+async function waitForAgentReply(page: import('@playwright/test').Page, timeoutMs = AGENT_REPLY_TIMEOUT_MS) {
   const postCount = await page.locator(sel.post).count();
   await page.waitForFunction(
     (count) => document.querySelectorAll('.post').length > count,
