@@ -351,6 +351,60 @@ export function relocateTerminalPaneRoot(root: HTMLElement | null | undefined, c
     return true;
 }
 
+export function blurActiveElementBeforeTerminalFocus(ownerDocument: Document | null | undefined): boolean {
+    const active = ownerDocument?.activeElement as HTMLElement | null | undefined;
+    if (!active || active === ownerDocument?.body || active === ownerDocument?.documentElement) return false;
+    if (typeof active.blur !== 'function') return false;
+    active.blur();
+    return true;
+}
+
+export function resetTerminalImeState(terminal: any, terminalHost?: HTMLElement | null): void {
+    const candidates = [
+        terminal?.inputElement,
+        terminal?.textarea,
+        terminal?.container,
+        terminalHost,
+        terminalHost?.querySelector?.('textarea'),
+    ].filter((element, index, all): element is HTMLElement => (
+        Boolean(element) && all.indexOf(element) === index
+    ));
+
+    for (const element of candidates) {
+        try {
+            const ownerWindow = element.ownerDocument?.defaultView || window;
+            const event = typeof ownerWindow.CompositionEvent === 'function'
+                ? new ownerWindow.CompositionEvent('compositionend', { data: '' })
+                : new ownerWindow.Event('compositionend');
+            element.dispatchEvent?.(event);
+        } catch (_error) {
+            // Best-effort IME cleanup for browsers that do not expose CompositionEvent.
+        }
+    }
+
+    if (terminal && typeof terminal === 'object') {
+        terminal.isComposing = false;
+        terminal.pendingKeyAfterComposition = null;
+        terminal.compositionJustEnded = false;
+    }
+}
+
+export function focusTerminalCleanly(options: {
+    terminal?: any;
+    terminalHost?: HTMLElement | null;
+    termEl?: HTMLElement | null;
+    ownerDocument?: Document | null;
+}): void {
+    blurActiveElementBeforeTerminalFocus(options.ownerDocument);
+    resetTerminalImeState(options.terminal, options.terminalHost || null);
+    if (typeof options.terminal?.focus === 'function') {
+        options.terminal.focus();
+    } else {
+        options.termEl?.focus?.();
+    }
+    resetTerminalImeState(options.terminal, options.terminalHost || null);
+}
+
 class TerminalPaneInstance implements PaneInstance {
     private container: HTMLElement;
     private ownerDocument: Document;
@@ -390,6 +444,7 @@ class TerminalPaneInstance implements PaneInstance {
         this.termEl = this.ownerDocument.createElement('div');
         this.termEl.className = 'terminal-pane-content';
         this.termEl.setAttribute('tabindex', '0');
+        this.termEl.setAttribute('inputmode', 'none');
 
         this.statusEl = this.ownerDocument.createElement('span');
         this.statusEl.className = 'terminal-pane-status';
@@ -517,6 +572,7 @@ class TerminalPaneInstance implements PaneInstance {
             terminalHost.style.height = '100%';
             terminalHost.style.minWidth = '0';
             terminalHost.style.minHeight = '0';
+            terminalHost.setAttribute('inputmode', 'none');
             this.bodyEl.appendChild(terminalHost);
 
             const terminal = new mod.Terminal({
@@ -534,8 +590,10 @@ class TerminalPaneInstance implements PaneInstance {
                 terminal.loadAddon?.(fitAddon);
             }
 
+            blurActiveElementBeforeTerminalFocus(this.ownerDocument);
             await terminal.open(terminalHost);
             (terminalHost as any).__terminal = terminal;
+            resetTerminalImeState(terminal, terminalHost);
             this.syncHostLayout();
             terminal.loadFonts?.();
             fitAddon?.observeResize?.();
@@ -836,11 +894,13 @@ class TerminalPaneInstance implements PaneInstance {
     }
 
     focus(): void {
-        if (this.terminal?.focus) {
-            this.terminal.focus();
-            return;
-        }
-        this.termEl?.focus();
+        const terminalHost = this.bodyEl.querySelector('.terminal-live-host') as HTMLElement | null;
+        focusTerminalCleanly({
+            terminal: this.terminal,
+            terminalHost,
+            termEl: this.termEl,
+            ownerDocument: this.ownerDocument,
+        });
     }
 
     resize(): void {
