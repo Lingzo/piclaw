@@ -184,6 +184,22 @@
 - Tab strip hidden by default, revealed on hover near top edge
 - Minimum 44×44px tap target on exit indicator for touch devices
 
+### US-16: Message Deletion from Timeline
+> As a user managing conversation history, I want to delete messages and their cascading thread replies correctly, so that cleanup doesn't leave orphaned replies or lose data unexpectedly.
+
+**Acceptance criteria:**
+- Delete button visible on message hover
+- Single message (no replies): deletes immediately, no confirmation
+- Parent with replies: shows confirmation dialog mentioning reply count
+- Confirming cascade: removes parent and ALL thread replies
+- Cancelling: preserves all messages unchanged
+- Server fallback: if backend detects replies client missed, shows second confirmation
+- No orphaned replies remain after cascade delete
+- Deleted messages stay gone after page refresh
+- Media attachments cleaned up on delete (not leaked)
+- Delete animation (`.removing` class) plays before removal
+- No accidental deletion from drag/swipe gestures
+
 ---
 
 ## Priority Matrix
@@ -205,6 +221,7 @@
 | US-13 Terminal standalone | ★★★ | ★★ | ★★★ | Frequent | High |
 | US-14 Terminal dock | ★★ | ★ | ★★★ | Frequent (desktop) | Medium |
 | US-15 Terminal zen mode | ★★ | ★ | ★★★ | Occasional | Medium |
+| US-16 Message deletion | ★★★ | ★★ | ★★ | Frequent | High |
 
 ## Test implementation priority
 
@@ -223,3 +240,4 @@
 13. **US-13** — Terminal standalone
 14. **US-14** — Terminal dock (beneath editor)
 15. **US-15** — Terminal zen mode
+16. **US-16** — Message deletion from timeline
