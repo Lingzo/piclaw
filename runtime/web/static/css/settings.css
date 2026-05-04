@@ -2167,3 +2167,184 @@
     color: var(--error-color, #e55);
     width: 100%;
 }
+
+/* ── Scheduled tasks management ─────────────────────────────────────────── */
+.settings-task-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+
+.settings-task-counts,
+.settings-task-filters,
+.settings-task-row-meta,
+.settings-task-run-meta,
+.settings-task-detail-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.settings-task-filters input,
+.settings-task-filters select {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+
+.settings-task-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid var(--border-color, rgba(128,128,128,0.22));
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 0.78em;
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+    white-space: nowrap;
+}
+
+.settings-task-pill-active,
+.settings-task-pill-success { color: var(--success-color, #00ba7c); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+.settings-task-pill-paused { color: var(--warning-color, #f59e0b); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+.settings-task-pill-completed { color: var(--text-secondary); }
+.settings-task-pill-error { color: var(--danger-color, #ef4444); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+
+.settings-task-layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.2fr);
+    gap: 14px;
+    min-height: 420px;
+}
+
+.settings-task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.settings-task-row {
+    text-align: left;
+    color: var(--text-primary);
+    background: color-mix(in srgb, var(--bg-secondary) 78%, transparent);
+    border: 1px solid var(--border-color, rgba(128,128,128,0.2));
+    border-radius: 10px;
+    padding: 10px;
+    cursor: pointer;
+}
+
+.settings-task-row:hover,
+.settings-task-row.active {
+    border-color: color-mix(in srgb, var(--accent-color, #1d9bf0) 50%, var(--border-color));
+    background: color-mix(in srgb, var(--accent-color, #1d9bf0) 8%, var(--bg-secondary));
+}
+
+.settings-task-row-main {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.settings-task-row-main strong,
+.settings-task-row-main span,
+.settings-task-row-times {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-task-row-main span,
+.settings-task-row-times {
+    color: var(--text-secondary);
+    font-size: 0.84em;
+}
+
+.settings-task-row-meta { margin-top: 8px; }
+.settings-task-row-times { display: block; margin-top: 6px; }
+
+.settings-task-detail,
+.settings-task-detail-empty,
+.settings-empty-state,
+.settings-error-state {
+    border: 1px solid var(--border-color, rgba(128,128,128,0.2));
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+    padding: 14px;
+}
+
+.settings-error-state { color: var(--danger-color, #ef4444); }
+.settings-task-detail-empty { color: var(--text-secondary); display: grid; place-items: center; min-height: 240px; text-align: center; }
+
+.settings-task-detail-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.settings-task-detail h4 { margin: 0 0 6px; }
+.settings-task-detail code { color: var(--text-secondary); font-size: 0.82em; }
+
+.settings-task-detail-actions button,
+.settings-task-filters button {
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-radius: 6px;
+    padding: 6px 10px;
+    cursor: pointer;
+}
+
+.settings-task-detail-actions button:hover,
+.settings-task-filters button:hover { border-color: var(--accent-color, #1d9bf0); }
+.settings-task-detail-actions button.danger { color: var(--danger-color, #ef4444); }
+
+.settings-task-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(90px, 0.45fr) minmax(0, 1fr);
+    gap: 8px 12px;
+    margin-bottom: 14px;
+    font-size: 0.9em;
+}
+
+.settings-task-detail-grid > span { color: var(--text-secondary); }
+.settings-task-detail-grid strong,
+.settings-task-detail-grid code { min-width: 0; overflow-wrap: anywhere; }
+
+.settings-task-command-block pre {
+    max-height: 8rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.settings-task-run-list { display: flex; flex-direction: column; gap: 8px; }
+.settings-task-run-row {
+    border-left: 3px solid var(--border-color);
+    padding: 8px 10px;
+    background: color-mix(in srgb, var(--bg-primary) 75%, transparent);
+    border-radius: 8px;
+}
+.settings-task-run-error { border-left-color: var(--danger-color, #ef4444); }
+.settings-task-run-success { border-left-color: var(--success-color, #00ba7c); }
+.settings-task-run-meta { color: var(--text-secondary); font-size: 0.82em; margin-bottom: 4px; }
+.settings-task-run-summary { overflow-wrap: anywhere; }
+
+@media (max-width: 900px) {
+    .settings-task-layout { grid-template-columns: 1fr; }
+    .settings-task-detail-header { flex-direction: column; }
+}

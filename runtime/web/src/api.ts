@@ -144,6 +144,29 @@ export async function getSystemMetrics() {
     return request('/agent/system-metrics');
 }
 
+export async function getScheduledTasks(options = {}) {
+    const params = new URLSearchParams();
+    if (options?.id) params.set('id', String(options.id));
+    if (options?.chatJid) params.set('chat_jid', String(options.chatJid));
+    if (options?.status && options.status !== 'all') params.set('status', String(options.status));
+    if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.includeRunLogs) params.set('include_run_logs', '1');
+    if (options?.runLogLimit) params.set('run_log_limit', String(options.runLogLimit));
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return request(`/agent/scheduled-tasks${query}`);
+}
+
+export async function updateScheduledTask(action, id, options = {}) {
+    return request('/agent/scheduled-tasks/action', {
+        method: 'POST',
+        body: JSON.stringify({
+            action,
+            id,
+            allow_internal: options?.allowInternal === true,
+        }),
+    });
+}
+
 export async function saveUiState(payload) {
     return request('/agent/ui-state', {
         method: 'POST',
