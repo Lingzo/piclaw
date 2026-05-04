@@ -7,6 +7,9 @@
  */
 
 import { registerPreShutdownHook } from "../runtime/shutdown-registry.js";
+import { createLogger, debugSuppressedError } from "../utils/logger.js";
+
+const log = createLogger("runtime-stream-sessions");
 
 export type RuntimeStreamSessionStatus = "open" | "completed" | "failed" | "cancelled" | "timed_out";
 export type RuntimeStreamFrameKind = "stdout" | "stderr" | "event" | "status";
@@ -181,8 +184,12 @@ function emit(type: RuntimeStreamSessionEventType, record: RuntimeStreamSessionR
   for (const listener of listeners) {
     try {
       listener(event);
-    } catch {
-      // Listener failures must not break stream/session lifecycle.
+    } catch (error) {
+      debugSuppressedError(log, "Runtime stream session listener failed; continuing lifecycle event delivery.", error, {
+        operation: "runtime_stream_sessions.emit.listener",
+        sessionId: record.id,
+        eventType: type,
+      });
     }
   }
 }
@@ -201,8 +208,12 @@ async function runCleanup(record: RuntimeStreamSessionRecord): Promise<void> {
   if (!record.onCleanup) return;
   try {
     await record.onCleanup(snapshot(record));
-  } catch {
-    // Best effort; callers should not hang on cleanup failures.
+  } catch (error) {
+    debugSuppressedError(log, "Runtime stream session cleanup failed; continuing session finalization.", error, {
+      operation: "runtime_stream_sessions.cleanup",
+      sessionId: record.id,
+      status: record.status,
+    });
   }
 }
 
