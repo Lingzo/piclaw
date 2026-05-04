@@ -249,6 +249,20 @@
 - Close button still works as explicit fallback
 - Lightbox stays closed after dismissal (no flicker/re-render)
 
+### US-21: Session Swipe Independence
+> As a mobile user, I want to swipe between sessions regardless of which UI elements are visible, so that session navigation works consistently no matter what pane is open.
+
+**Acceptance criteria:**
+- Swipe works on the timeline regardless of which panes are open (workspace, editor, dock)
+- Workspace explorer being visible does NOT prevent swipe on the timeline
+- Editor pane being visible does NOT prevent swipe on the timeline
+- Terminal dock being visible does NOT prevent swipe on the timeline
+- Swipe IS blocked inside actual interactive controls (compose box, text inputs, contenteditable)
+- Swipe IS blocked inside the editor content area (which handles its own horizontal gestures)
+- Swipe passes through agent thinking/status panels
+- Apple Pencil does not trigger swipe
+- Visual indicator shows adjacent session name during gesture
+
 ---
 
 ## Priority Matrix
@@ -275,6 +289,7 @@
 | US-18 Compaction indicator | ★★★ | ★★ | ★★★ | Every compaction | High |
 | US-19 Model switching | ★★★ | ★★ | ★★★ | Frequent (dev) | High |
 | US-20 Lightbox dismissal | ★★★ | ★★★ | ★★ | Every image view | Medium |
+| US-21 Swipe independence | ★★★ | ★★★ | ★ | Every session switch (touch) | High |
 
 ## Test implementation priority
 
@@ -298,3 +313,4 @@
 18. **US-18** — Compaction indicator instant updates
 19. **US-19** — Model switching after compaction
 20. **US-20** — Lightbox dismissal (any key/click/tap)
+21. **US-21** — Session swipe independence from visible elements
