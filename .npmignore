@@ -1,3 +1,0 @@
-# Viewer extensions extracted to piclaw-addons — exclude from core bundle
-runtime/extensions/viewers/office-viewer
-runtime/extensions/viewers/office-viewer-tool
