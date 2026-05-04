@@ -4,7 +4,7 @@ import { sel } from '../support/selectors';
 // /theme and /tint E2E tests
 //
 // Architecture:
-//   compose → POST /agent/chat → server handleUiThemeCommand()
+//   compose → POST /agent/default/message → server handleUiThemeCommand()
 //   → SSE ui_theme event → client applyThemeFromEvent()
 //   → sets data-theme, data-color-theme, data-tint on <html>
 //   → applies CSS variables on document.documentElement.style
@@ -20,7 +20,7 @@ import { sel } from '../support/selectors';
 /** Send a slash command and wait for the authenticated POST to complete. */
 async function sendCommand(page: import('@playwright/test').Page, cmd: string) {
   const responsePromise = page.waitForResponse(
-    (response) => response.url().includes('/agent/chat') && response.request().method() === 'POST',
+    (response) => response.url().includes('/agent/default/message') && response.request().method() === 'POST',
     { timeout: 10_000 },
   ).catch(() => null);
   const compose = page.locator(sel.composeInput);
@@ -55,7 +55,7 @@ async function getThemeState(page: import('@playwright/test').Page) {
     return {
       dataTheme: root.dataset.theme || null,
       dataColorTheme: root.dataset.colorTheme || null,
-      dataTint: root.dataset.tint || null,
+      dataTint: root.dataset.tint || '',
       bgPrimary: style.getPropertyValue('--bg-primary').trim() || null,
       bgSecondary: style.getPropertyValue('--bg-secondary').trim() || null,
       accentColor: style.getPropertyValue('--accent-color').trim() || null,
@@ -180,7 +180,7 @@ test.describe('/theme command', () => {
     await waitForThemeState(page, { dataColorTheme: 'ristretto' });
     expect((await getThemeState(page)).dataColorTheme).toBe('ristretto');
 
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1000);
 
     const after = await getThemeState(page);
@@ -332,7 +332,7 @@ test.describe('/tint command on default theme', () => {
     await sendCommand(page, '/tint #e11d48');
     expect((await getThemeState(page)).dataTint).toBe('#e11d48');
 
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1000);
 
     const after = await getThemeState(page);

@@ -2,7 +2,6 @@ import { test, expect } from '../support/world';
 import { sel } from '../support/selectors';
 
 const CHAT_POST_TIMEOUT_MS = 8_000;
-const AGENT_REPLY_TIMEOUT_MS = 5_000;
 
 // US-16: Message Deletion from Timeline
 //
@@ -30,55 +29,49 @@ function deleteButtonFor(page: import('@playwright/test').Page, postSelector: st
   return page.locator(`${postSelector} .post-delete-btn, ${postSelector} [aria-label="Delete message"]`);
 }
 
-/** Send a message and wait for the authenticated chat POST plus timeline echo. */
-async function sendMessage(page: import('@playwright/test').Page, text: string) {
-  const userPostCount = await page.locator('.post:not(.agent-post)').count();
-  const responsePromise = page.waitForResponse(
-    (response) => response.url().includes('/agent/chat') && response.request().method() === 'POST',
-    { timeout: CHAT_POST_TIMEOUT_MS },
-  ).catch(() => null);
+/** Create a timeline post directly so deletion tests do not leave the agent busy. */
+async function sendMessage(page: import('@playwright/test').Page, text: string): Promise<number> {
+  const response = await page.evaluate(async (content) => {
+    const res = await fetch('/post', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`/post failed with HTTP ${res.status}: ${JSON.stringify(body)}`);
+    return body;
+  }, text);
 
-  const compose = page.locator(sel.composeInput);
-  await compose.click();
-  await compose.fill(text);
-  await page.keyboard.press('Enter');
-
-  const response = await responsePromise;
-  if (!response) {
-    throw new Error(`No /agent/chat response observed for ${JSON.stringify(text)}; E2E auth/session bootstrap may be missing.`);
-  }
-  if (!response.ok()) {
-    throw new Error(`/agent/chat failed with HTTP ${response.status()} for ${JSON.stringify(text)}: ${await response.text().catch(() => '')}`);
-  }
-
-  await page.waitForFunction(
-    ({ previousCount, expectedText }) => {
-      const userPosts = Array.from(document.querySelectorAll('.post:not(.agent-post)'));
-      return userPosts.length > previousCount && userPosts.some((post) => post.textContent?.includes(expectedText));
-    },
-    { previousCount: userPostCount, expectedText: text },
-    { timeout: CHAT_POST_TIMEOUT_MS },
-  );
+  const id = Number((response as { id?: unknown }).id);
+  await expect(page.locator(`#post-${id}`)).toBeVisible({ timeout: CHAT_POST_TIMEOUT_MS });
+  return id;
 }
 
-/** Wait briefly for an agent response; deletion tests can continue/skip cascade checks without one. */
-async function waitForAgentReply(page: import('@playwright/test').Page, timeoutMs = AGENT_REPLY_TIMEOUT_MS) {
-  const postCount = await page.locator(sel.post).count();
-  await page.waitForFunction(
-    (count) => document.querySelectorAll('.post').length > count,
-    postCount,
-    { timeout: timeoutMs }
-  ).catch(() => {});
-  await page.waitForTimeout(500);
+/** Create a deterministic thread reply without invoking the agent. */
+async function sendReply(page: import('@playwright/test').Page, threadId: number, text: string): Promise<number> {
+  const response = await page.evaluate(async ({ threadId, content }) => {
+    const res = await fetch('/post/reply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ thread_id: threadId, content }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`/post/reply failed with HTTP ${res.status}: ${JSON.stringify(body)}`);
+    return body;
+  }, { threadId, content: text });
+
+  const id = Number((response as { id?: unknown }).id);
+  await expect(page.locator(`#post-${id}`)).toBeVisible({ timeout: CHAT_POST_TIMEOUT_MS });
+  return id;
 }
 
 // ── Single message deletion ──────────────────────────────────────
 
 test.describe('US-16: Single Message Deletion', () => {
   test('delete button visible on hover', async ({ authedPage: page }) => {
-    await page.waitForSelector(sel.post);
+    const postId = await sendMessage(page, `hover-delete-test-${Date.now()}`);
 
-    const post = page.locator(sel.post).last();
+    const post = page.locator(`#post-${postId}`);
     await post.hover();
     await page.waitForTimeout(300);
 
@@ -89,7 +82,6 @@ test.describe('US-16: Single Message Deletion', () => {
   test('delete a single message removes it from timeline', async ({ authedPage: page }) => {
     // Send a test message
     await sendMessage(page, `e2e-delete-test-${Date.now()}`);
-    await waitForAgentReply(page);
 
     // Get the user message we just sent
     const userPosts = page.locator('.post:not(.agent-post)');
@@ -140,7 +132,7 @@ test.describe('US-16: Single Message Deletion', () => {
     }
 
     // Refresh
-    await page.reload({ waitUntil: 'networkidle' });
+    await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector(sel.post, { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(1000);
 
@@ -154,9 +146,9 @@ test.describe('US-16: Single Message Deletion', () => {
 
 test.describe('US-16: Cascading Thread Deletion', () => {
   test('deleting a parent with replies shows confirmation with count', async ({ authedPage: page }) => {
-    // Send a message that will get a reply (agent response creates a thread)
-    await sendMessage(page, 'Reply to this for thread deletion test');
-    await waitForAgentReply(page);
+    // Create a parent plus deterministic replies without invoking the agent.
+    const parentId = await sendMessage(page, 'Reply to this for thread deletion test');
+    await sendReply(page, parentId, 'Thread deletion reply 1');
 
     // The user message should now have at least 1 reply (the agent response)
     // Find the user message (parent)
@@ -167,29 +159,9 @@ test.describe('US-16: Cascading Thread Deletion', () => {
       return;
     }
 
-    const parentPost = userPosts.last();
+    const parentPost = page.locator(`#post-${parentId}`);
 
-    // Check if this post has thread replies visible
-    const parentId = await parentPost.evaluate((el) => {
-      const idAttr = el.id?.replace('post-', '');
-      return idAttr || null;
-    });
-
-    if (!parentId) {
-      test.skip(undefined, 'Cannot determine parent post ID');
-      return;
-    }
-
-    // Count visible replies
-    const replyCount = await page.evaluate((pid) => {
-      return document.querySelectorAll(`.post.thread-reply`).length;
-    }, parentId);
-
-    if (replyCount === 0) {
-      // Agent may not have threaded its reply — skip cascade-specific test
-      test.skip(undefined, 'No thread replies to test cascade');
-      return;
-    }
+    await expect(page.locator(sel.postContent, { hasText: 'Thread deletion reply 1' })).toBeVisible();
 
     // Set up dialog listener to check the message
     let dialogMessage = '';
@@ -209,15 +181,13 @@ test.describe('US-16: Cascading Thread Deletion', () => {
   });
 
   test('confirming cascade removes parent and all replies', async ({ authedPage: page }) => {
-    await sendMessage(page, 'Cascade delete test - please reply');
-    await waitForAgentReply(page);
+    const parentId = await sendMessage(page, 'Cascade delete test - please reply');
+    await sendReply(page, parentId, 'Cascade delete reply 1');
 
     const postsBefore = await getVisiblePostIds(page);
     const countBefore = postsBefore.length;
 
-    // Find the last user post
-    const userPosts = page.locator('.post:not(.agent-post)');
-    const parentPost = userPosts.last();
+    const parentPost = page.locator(`#post-${parentId}`);
 
     // Accept cascade confirmation
     page.on('dialog', async (dialog) => {
@@ -238,13 +208,12 @@ test.describe('US-16: Cascading Thread Deletion', () => {
   });
 
   test('cancelling cascade preserves all messages', async ({ authedPage: page }) => {
-    await sendMessage(page, 'Cancel cascade test');
-    await waitForAgentReply(page);
+    const parentId = await sendMessage(page, 'Cancel cascade test');
+    await sendReply(page, parentId, 'Cancel cascade reply 1');
 
     const postsBefore = await getVisiblePostIds(page);
 
-    const userPosts = page.locator('.post:not(.agent-post)');
-    const parentPost = userPosts.last();
+    const parentPost = page.locator(`#post-${parentId}`);
 
     // Dismiss (cancel) confirmation
     page.on('dialog', async (dialog) => {
@@ -265,12 +234,11 @@ test.describe('US-16: Cascading Thread Deletion', () => {
   });
 
   test('no orphaned replies remain after cascade delete', async ({ authedPage: page }) => {
-    await sendMessage(page, 'Orphan check test');
-    await waitForAgentReply(page);
+    const createdParentId = await sendMessage(page, 'Orphan check test');
+    await sendReply(page, createdParentId, 'Orphan check reply 1');
 
-    const userPosts = page.locator('.post:not(.agent-post)');
-    const parentPost = userPosts.last();
-    const parentId = await parentPost.evaluate(el => el.id?.replace('post-', '') || '');
+    const parentPost = page.locator(`#post-${createdParentId}`);
+    const parentId = String(createdParentId);
 
     // Accept cascade
     page.on('dialog', async (dialog) => await dialog.accept());
