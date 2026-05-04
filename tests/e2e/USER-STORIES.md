@@ -213,6 +213,30 @@
 - User message visible before agent response arrives (SSE `new_post` event)
 - Message with file attachment shows attachment indicator immediately
 
+### US-18: Compaction Indicator Instant Updates
+> As a user, I want the compaction indicator to update instantly during and after compaction, so that I always know the current state of my context window.
+
+**Acceptance criteria:**
+- Context pie shows `.is-compacting` class during compaction
+- Elapsed timer (0:05, 1:23) counts in real-time on the pie
+- Aria-label mentions "Smart compaction" during active compaction
+- Abort/stop button shows compacting spinner during compaction
+- Indicator clears immediately when compaction_end SSE arrives
+- Context usage percentage updates after successful compaction
+- Suppressed compaction shows backoff notice with failure count / retry timing
+
+### US-19: Model Switching After Compaction
+> As a user, I want to switch to a smaller context model immediately after compaction, so that I can continue working with a model appropriate for my reduced context.
+
+**Acceptance criteria:**
+- Model button in compose bar is clickable during and after compaction
+- Clicking model button opens model selector/settings
+- `/model` command shows current model or available list
+- Model switch shows "Switching…" transition label
+- Compose bar updates to new model name after switch
+- Context usage recalculates for the new model's context window
+- No delay or blocked state between compaction end and model switch
+
 ---
 
 ## Priority Matrix
@@ -236,6 +260,8 @@
 | US-15 Terminal zen mode | ★★ | ★ | ★★★ | Occasional | Medium |
 | US-16 Message deletion | ★★★ | ★★ | ★★ | Frequent | High |
 | US-17 Compose instant visibility | ★★★ | ★★★ | ★★★ | Every message | Very high |
+| US-18 Compaction indicator | ★★★ | ★★ | ★★★ | Every compaction | High |
+| US-19 Model switching | ★★★ | ★★ | ★★★ | Frequent (dev) | High |
 
 ## Test implementation priority
 
@@ -256,3 +282,5 @@
 15. **US-15** — Terminal zen mode
 16. **US-16** — Message deletion from timeline
 17. **US-17** — Compose submission instant visibility
+18. **US-18** — Compaction indicator instant updates
+19. **US-19** — Model switching after compaction
