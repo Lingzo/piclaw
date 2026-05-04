@@ -1256,28 +1256,39 @@
     order: 1;
 }
 
-.compose-connection-status {
+.compose-footer {
+    position: relative;
+}
+
+.compose-footer .compose-connection-status {
     position: absolute;
-    right: 0;
+    left: 0;
     bottom: 0;
-    z-index: 3;
+    right: auto;
+    top: auto;
+    z-index: 5;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 22px;
-    padding: 0 8px;
+    min-height: 16px;
+    padding: 1px 6px;
     border-radius: var(--radius-full);
     border: 1px solid color-mix(in srgb, var(--border-color) 90%, transparent);
-    font-size: 10.5px;
+    font-size: 9.5px;
     line-height: 1;
     font-weight: 600;
     white-space: nowrap;
     box-sizing: border-box;
     flex: 0 0 auto;
-    color: inherit;
     vertical-align: middle;
     pointer-events: none;
-    box-shadow: var(--shadow-sm);
+    box-shadow: none;
+}
+
+.compose-footer .compose-connection-status.disconnected {
+    background: color-mix(in srgb, var(--danger-color) 82%, var(--bg-secondary));
+    color: white;
+    border-color: color-mix(in srgb, var(--danger-color) 78%, transparent);
 }
 
 .compose-actions {
@@ -1303,6 +1314,20 @@
     gap: 4px;
     flex-shrink: 0;
 }
+
+.compose-session-trigger-top {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    z-index: 5;
+    max-width: min(34vw, 140px);
+}
+
+.compose-session-trigger-top + .compose-input-main textarea {
+    padding-top: 2px;
+    padding-right: max(calc(var(--spacing-xs) + 28px), min(36vw, 148px));
+}
+
 
 .compose-session-trigger {
     display: inline-flex;

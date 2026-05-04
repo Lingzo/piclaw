@@ -67,6 +67,7 @@ export interface WebChannelLike
       contentBlocks?: unknown[];
       linkPreviews?: unknown[];
       threadId?: number;
+      screenHint?: string | null;
       isTerminalAgentReply?: boolean;
       isSteeringMessage?: boolean;
     }

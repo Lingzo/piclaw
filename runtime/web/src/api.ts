@@ -4,6 +4,7 @@
  */
 
 import { recordAppPerfRequest } from './ui/app-perf-tracing.js';
+import { resolveScreenSizeHint } from './ui/screen-size-hint.js';
 
 const API_BASE = '';
 
@@ -187,7 +188,12 @@ export async function deletePost(postId, cascade = false, chatJid = null) {
  */
 export async function sendAgentMessage(agentId, content, threadId = null, mediaIds = [], mode = null, chatJid = null) {
     const query = chatJid ? `?chat_jid=${encodeURIComponent(chatJid)}` : '';
-    const payload = { content, thread_id: threadId, media_ids: mediaIds };
+    const payload = {
+        content,
+        thread_id: threadId,
+        media_ids: mediaIds,
+        client_context: { screen_hint: resolveScreenSizeHint() },
+    };
     if (mode === 'auto' || mode === 'queue' || mode === 'steer') {
         payload.mode = mode;
     }

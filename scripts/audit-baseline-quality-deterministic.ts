@@ -280,6 +280,7 @@ const groupDefinitions: GroupDefinition[] = [
         "manifest.test.ts",
         "server-lifecycle-gateway-service.test.ts",
         "sse-hub.test.ts",
+        "static-compression.test.ts",
         "ui-context.test.ts",
         "ui-endpoints.test.ts",
         "ui-theme-commands.test.ts",
