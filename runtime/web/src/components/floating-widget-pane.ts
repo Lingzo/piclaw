@@ -190,6 +190,7 @@ export function FloatingWidgetPane({ widget, onClose, onWidgetEvent }) {
                                     title=${title}
                                     name=${getGeneratedWidgetHostWindowName(widget)}
                                     sandbox=${sandbox}
+                                    allow="microphone; clipboard-read; clipboard-write"
                                     referrerpolicy="no-referrer"
                                     srcdoc=${srcDoc}
                                 ></iframe>
