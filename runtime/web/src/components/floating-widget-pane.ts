@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { html, useEffect, useMemo, useRef } from '../vendor/preact-htm.js';
 import { postIframeMessageBestEffort, setIframeNameBestEffort } from './generated-widget-host-bridge.js';
 import {

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { html, useEffect, useMemo, useRef, useState } from '../vendor/preact-htm.js';
 import { BodyPortal } from './body-portal.js';
 import { getMediaBlob, getMediaUrl } from '../api.js';

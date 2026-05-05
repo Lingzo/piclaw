@@ -1,6 +1,25 @@
-// @ts-nocheck
 import { highlightCodeToHtml } from './utils/code-highlighting.js';
 import { getThemeMode } from './ui/theme.js';
+
+declare const katex: { renderToString: (tex: string, options?: Record<string, unknown>) => string };
+declare const marked: { parse: (text: string, options?: Record<string, unknown>) => string };
+
+declare global {
+    interface Window {
+        katex?: typeof katex;
+        marked?: typeof marked;
+        beautifulMermaid?: {
+            renderMermaid: (code: string, options?: Record<string, unknown>) => Promise<string>;
+            THEMES: Record<string, Record<string, unknown>>;
+        };
+    }
+}
+
+type MarkdownOptions = {
+    allowDataImage?: boolean;
+    sanitize?: boolean;
+    rewriteImageSrc?: (src: string) => string;
+};
 
 /** Regex matching HTTP/HTTPS URLs in message text. */
 export const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/g;
@@ -137,7 +156,7 @@ function escapeHtmlAttr(value) {
         .replace(/'/g, '&#39;');
 }
 
-export function sanitizeUrl(url, options = {}) {
+export function sanitizeUrl(url, options: MarkdownOptions = {}) {
     if (!url) return null;
     const raw = String(url).trim();
     if (!raw) return null;
@@ -162,11 +181,11 @@ export function sanitizeUrl(url, options = {}) {
     }
 }
 
-function sanitizeHtml(html, options = {}) {
+function sanitizeHtml(html, options: MarkdownOptions = {}) {
     if (!html) return '';
     if (options?.sanitize === false) return html;
     const doc = new DOMParser().parseFromString(html, 'text/html');
-    const nodes = [];
+    const nodes: Element[] = [];
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
     let node;
     while ((node = walker.nextNode())) {
@@ -512,7 +531,8 @@ export function renderMath(html_content) {
             const rendered = katex.renderToString(decodeMath(tex.trim()), { displayMode: true, throwOnError: false });
             return `${leading}${rendered}`;
         } catch (e) {
-            return `<span class="math-error" title="${escapeHtmlAttr(e.message)}">${match}</span>`;
+            const message = e instanceof Error ? e.message : String(e);
+            return `<span class="math-error" title="${escapeHtmlAttr(message)}">${match}</span>`;
         }
     });
 
@@ -526,7 +546,7 @@ function linkifyHashtagsInHtml(html_content) {
     if (!html_content) return html_content;
     const doc = new DOMParser().parseFromString(html_content, 'text/html');
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-    const nodes = [];
+    const nodes: Text[] = [];
     let node;
     while ((node = walker.nextNode())) {
         nodes.push(node);
@@ -602,7 +622,7 @@ export function prepareMarkdownSource(text) {
 }
 
 /** Render markdown text to sanitised HTML with syntax highlighting. */
-export function renderMarkdown(text, onHashtagClick, options = {}) {
+export function renderMarkdown(text, onHashtagClick, options: MarkdownOptions = {}) {
     if (!text) return '';
 
     const { safeHtml, mermaidBlocks } = prepareMarkdownSource(text);
