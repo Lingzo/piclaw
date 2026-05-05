@@ -32,6 +32,7 @@ import {
 } from './app-extension-status.js';
 import {
   applyExtensionUiWorkingState,
+  resolveExtensionUiContextUsage,
   resolveExtensionUiToast,
   resolveStatusPanelWidgetEventContext,
 } from './app-extension-ui-sse.js';
@@ -558,6 +559,11 @@ export function handleAppSseEvent(
     }
 
     if (!isCurrentChatEvent) return;
+
+    const extensionContextUsage = resolveExtensionUiContextUsage(eventType, data);
+    if (extensionContextUsage && extensionContextUsage.percent != null) {
+      setContextUsage((prev) => haveSameContextUsage(prev, extensionContextUsage) ? prev : extensionContextUsage);
+    }
 
     setExtensionWorkingState((previous) => {
       const next = applyExtensionUiWorkingState(previous, eventType, data);
