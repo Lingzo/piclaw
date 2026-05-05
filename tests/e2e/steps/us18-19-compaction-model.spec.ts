@@ -17,6 +17,23 @@ import { sel } from '../support/selectors';
 //   compose bar shows "Switching…" then new label
 //   context usage recalculates for new model window
 
+async function stopAndClearQueue(page: import('@playwright/test').Page) {
+  await page.locator(sel.stopButton).click({ timeout: 1000 }).catch(() => {});
+  await page.getByRole('button', { name: /clear all/i }).click({ timeout: 1000 }).catch(() => {});
+  await page.waitForFunction(() => {
+    const stop = document.querySelector('[data-testid="stop-button"], .compose-stop, button.abort-mode, button[aria-label*="Stop response" i]');
+    return !stop || (stop as HTMLElement).offsetParent === null;
+  }, { timeout: 5000 }).catch(() => {});
+}
+
+test.beforeEach(async ({ authedPage: page }) => {
+  await stopAndClearQueue(page);
+});
+
+test.afterEach(async ({ authedPage: page }) => {
+  await stopAndClearQueue(page);
+});
+
 /** Get the compaction indicator state from the compose bar. */
 async function getCompactionState(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
@@ -223,10 +240,9 @@ test.describe('US-19: Model Switching', () => {
     }
 
     await modelBtn.click();
-    await page.waitForTimeout(500);
 
-    const popup = page.locator('.model-popup, .settings-dialog, [data-pane="models"]');
-    const opened = await popup.isVisible();
+    const popup = page.locator('.model-popup, .compose-model-popup, .settings-dialog, [data-pane="models"]');
+    const opened = await popup.isVisible({ timeout: 3000 }).catch(() => false);
     if (opened) await page.keyboard.press('Escape');
     expect(opened).toBe(true);
   });
