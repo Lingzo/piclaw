@@ -152,9 +152,15 @@ test.describe('US-02: Queue and Steer', () => {
     const queueItems = await page.locator(sel.queueItem).allTextContents();
     expect(new Set(queueItems).size).toBe(queueItems.length);
 
-    // Compose should accept input.
+    // Compose should accept input. The compose control can be a textarea or a
+    // contenteditable editor depending on the web build, so avoid textarea-only
+    // assertions here.
     await compose.click();
     await compose.fill('Next message');
-    await expect(compose).toHaveValue(/Next message/);
+    const composeText = await compose.evaluate((node) => {
+      const el = node as HTMLTextAreaElement | HTMLElement;
+      return 'value' in el ? String(el.value) : (el.textContent || '');
+    });
+    expect(composeText).toContain('Next message');
   });
 });
