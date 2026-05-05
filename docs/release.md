@@ -42,6 +42,15 @@ git push origin main vX.Y.Z
 
 Then monitor CI and publish the GitHub release via the API (see skill for details).
 
+Package UX reports as one concatenated PDF plus a data-only ZIP before attaching release assets:
+
+```bash
+bun run release:package-ux-reports -- --input /tmp/piclaw-vX.Y.Z-ux-reports --version X.Y.Z
+# Upload both:
+# /workspace/tmp/piclaw-vX.Y.Z-ux-report.pdf
+# /workspace/tmp/piclaw-vX.Y.Z-ux-report-data.zip
+```
+
 For manual release-image verification outside GitHub Actions, the repo-owned smoke contract is:
 
 ```bash
