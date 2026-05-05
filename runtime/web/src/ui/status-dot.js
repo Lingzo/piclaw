@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 export function buildTurnDotClass({ steerQueued = false, pulsing = false } = {}) {
     const classes = ['turn-dot'];

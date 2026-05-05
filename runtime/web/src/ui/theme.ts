@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { getLocalStorageItem, setLocalStorageItem } from '../utils/storage.js';
 
 const THEME_STORAGE_KEY = 'piclaw_theme';
@@ -530,7 +529,7 @@ function clearCssVariables() {
     THEME_VAR_KEYS.forEach((key) => root.style.removeProperty(key));
 }
 
-function ensureMetaTag(name, options = {}) {
+function ensureMetaTag(name, options: { id?: string } = {}) {
     if (typeof document === 'undefined') return null;
     const id = typeof options.id === 'string' && options.id.trim() ? options.id.trim() : null;
     let tag = id
@@ -604,7 +603,7 @@ function resolveCurrentChatJid() {
     }
 }
 
-function applyThemeState(nextTheme, options = {}) {
+function applyThemeState(nextTheme, options: { persist?: boolean } = {}) {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
     const themeName = normalizeThemeName(nextTheme?.theme || 'default');
     const tint = nextTheme?.tint ? String(nextTheme.tint).trim() : null;

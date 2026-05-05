@@ -1,4 +1,3 @@
-// @ts-nocheck
 
 import { isMobileBrowserMode, isStandaloneWebAppMode } from './chat-window.js';
 

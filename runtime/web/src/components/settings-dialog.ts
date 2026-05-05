@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * settings-dialog.ts — Floating settings dialog shell.
  * Self-manages open/close via 'piclaw:open-settings' custom event.
