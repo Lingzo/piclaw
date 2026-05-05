@@ -39,10 +39,6 @@ test.describe('US-17: Instant Submission Visibility', () => {
     await stopAndClearQueue(page);
   });
 
-  test.afterEach(async ({ authedPage: page }) => {
-    await stopAndClearQueue(page);
-  });
-
   test('typed message appears in timeline after Enter', async ({ authedPage: page }) => {
     await page.waitForSelector(sel.timeline);
 
@@ -87,17 +83,22 @@ test.describe('US-17: Instant Submission Visibility', () => {
     await page.waitForTimeout(200);
     await sendViaCompose(page, msg2);
 
-    // Both should appear
+    // First submit should be a timeline post. The second is allowed to be an
+    // explicit queued follow-up if the first agent turn is still active.
     const post1 = page.locator(sel.postContent, { hasText: msg1 });
-    const post2 = page.locator(sel.postContent, { hasText: msg2 });
     await expect(post1).toBeVisible({ timeout: 5000 });
-    await expect(post2).toBeVisible({ timeout: 5000 });
 
-    // Order: msg1 should come before msg2 in the DOM
-    const allPosts = await page.locator(sel.postContent).allTextContents();
-    const idx1 = allPosts.findIndex(t => t.includes(msg1));
-    const idx2 = allPosts.findIndex(t => t.includes(msg2));
-    expect(idx1).toBeLessThan(idx2);
+    const post2 = page.locator(sel.postContent, { hasText: msg2 });
+    const queued2 = page.locator(sel.queueItem, { hasText: msg2 });
+    const post2Visible = await post2.isVisible({ timeout: 3000 }).catch(() => false);
+    if (!post2Visible) await expect(queued2).toBeVisible({ timeout: 3000 });
+
+    if (post2Visible) {
+      const allPosts = await page.locator(sel.postContent).allTextContents();
+      const idx1 = allPosts.findIndex(t => t.includes(msg1));
+      const idx2 = allPosts.findIndex(t => t.includes(msg2));
+      expect(idx1).toBeLessThan(idx2);
+    }
   });
 
   test('long multi-line message appears completely', async ({ authedPage: page }) => {
@@ -121,13 +122,13 @@ test.describe('US-17: Instant Submission Visibility', () => {
     }
     await page.keyboard.press('Enter');
 
-    // All lines should appear in the timeline
-    await page.waitForTimeout(2000);
-    const posts = await page.locator(sel.postContent).allTextContents();
-    const lastPost = posts[posts.length - 1] || '';
-    // At least first and last line should be present (not truncated)
-    expect(lastPost).toContain('Line 1');
-    expect(lastPost).toContain('Line 5');
+    // All lines should appear in the submitted user post, even if an agent
+    // status/error post is appended after it.
+    const submitted = page.locator(sel.postContent, { hasText: 'Line 1: This is a multi-line test' }).last();
+    await expect(submitted).toBeVisible({ timeout: 5000 });
+    const text = await submitted.textContent();
+    expect(text).toContain('Line 1');
+    expect(text).toContain('Line 5');
   });
 
   test('compose box clears and stays focused after submission', async ({ authedPage: page }) => {
