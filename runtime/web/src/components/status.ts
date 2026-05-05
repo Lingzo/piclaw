@@ -201,11 +201,17 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
     const planInfo = normalizePreview(plan);
     const thoughtInfo = normalizePreview(thought);
     const draftInfo = normalizePreview(draft);
+    const toolOutputInfo = normalizePreview({
+        text: status?.output_preview || status?.outputPreview || '',
+        fullText: status?.output_preview || status?.outputPreview || '',
+        totalLines: status?.output_total_lines || status?.outputTotalLines,
+    });
     const hasPlan = Boolean(planInfo.text) || planInfo.totalLines > 0;
     const hasThought = Boolean(thoughtInfo.text) || thoughtInfo.totalLines > 0;
     const hasDraft = Boolean(draftInfo.fullText?.trim() || draftInfo.text?.trim());
+    const hasToolOutput = Boolean(toolOutputInfo.fullText?.trim() || toolOutputInfo.text?.trim());
 
-    const hasCorePanels = Boolean(status || hasDraft || hasPlan || hasThought || pendingRequest || intent);
+    const hasCorePanels = Boolean(status || hasDraft || hasPlan || hasThought || hasToolOutput || pendingRequest || intent);
     const hasExtensionPanels = Array.isArray(extensionPanels) && extensionPanels.length > 0;
 
     const [expandedPanels, setExpandedPanels] = useState(new Set());
@@ -801,6 +807,15 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
                 maxLines: THOUGHT_MAX_LINES,
                 titleClass: 'thought',
                 panelKey: 'thought',
+            })}
+            ${showCorePanels && hasToolOutput && renderThinkingPanel({
+                panelTitle: panelTitle(status?.output_truncated || status?.outputTruncated ? 'Tool output preview' : 'Tool output'),
+                text: toolOutputInfo.text,
+                fullText: toolOutputInfo.fullText,
+                totalLines: toolOutputInfo.totalLines,
+                maxLines: 8,
+                titleClass: 'tool-output',
+                panelKey: 'tool-output',
             })}
             ${showCorePanels && status && status?.type !== 'intent' && html`
                 <div class=${`agent-status${isLastActivity ? ' agent-status-last-activity' : ''}${status?.type === 'error' ? ' agent-status-error' : ''}${toolRepoLabel || statusHints.length > 0 || statusActivityAgeLabel ? ' agent-status-multiline' : ''}`} aria-live="polite" style=${turnColor ? `--turn-color: ${turnColor};` : ''}>
