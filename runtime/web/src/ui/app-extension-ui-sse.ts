@@ -107,6 +107,34 @@ export function applyExtensionUiWorkingState(
   };
 }
 
+export function resolveExtensionUiContextUsage(
+  eventType: string | null | undefined,
+  payload: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  if (eventType !== 'extension_ui_status') return null;
+  if (payload?.key !== 'context_usage') return null;
+  const raw = typeof payload?.text === 'string' ? payload.text.trim() : '';
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const data = parsed as Record<string, unknown>;
+    const tokens = data.tokens == null ? null : Number(data.tokens);
+    const contextWindow = data.contextWindow == null ? null : Number(data.contextWindow);
+    const percent = data.percent == null ? null : Number(data.percent);
+    return {
+      tokens: Number.isFinite(tokens) ? tokens : null,
+      contextWindow: Number.isFinite(contextWindow) ? contextWindow : null,
+      percent: Number.isFinite(percent) ? percent : null,
+      estimated: data.estimated === true,
+      source: typeof data.source === 'string' ? data.source : null,
+      phase: typeof data.phase === 'string' ? data.phase : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function resolveExtensionUiToast(
   eventType: string | null | undefined,
   payload: Record<string, unknown> | null | undefined,

@@ -34,6 +34,14 @@ test('resolveFloatingWidgetHostRefreshContext computes dashboard-build intent an
     nextRefreshCount: 1,
   });
   expect(resolveFloatingWidgetHostRefreshContext({}, null)).toEqual({
+    shouldBuildDashboard: true,
+    nextRefreshCount: 1,
+  });
+  expect(resolveFloatingWidgetHostRefreshContext({ key: 'value' }, 1)).toEqual({
+    shouldBuildDashboard: true,
+    nextRefreshCount: 2,
+  });
+  expect(resolveFloatingWidgetHostRefreshContext({ buildDashboard: false }, null)).toEqual({
     shouldBuildDashboard: false,
     nextRefreshCount: 1,
   });

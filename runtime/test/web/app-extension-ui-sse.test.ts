@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 
 import {
   applyExtensionUiWorkingState,
+  resolveExtensionUiContextUsage,
   resolveExtensionUiToast,
   resolveExtensionUiWorkingIndicator,
   resolveStatusPanelEventChatJid,
@@ -33,6 +34,31 @@ test('resolveStatusPanelWidgetEventContext classifies status-panel widget events
     eventChatJid: 'chat:1',
     panelKey: 'panel:2',
   });
+});
+
+test('resolveExtensionUiContextUsage parses smart-compaction context estimates', () => {
+  expect(resolveExtensionUiContextUsage('extension_ui_status', {
+    key: 'context_usage',
+    text: JSON.stringify({
+      tokens: 42000,
+      contextWindow: 128000,
+      percent: 32.8125,
+      estimated: true,
+      source: 'smart_compaction',
+      phase: 'generating_summary',
+    }),
+  })).toEqual({
+    tokens: 42000,
+    contextWindow: 128000,
+    percent: 32.8125,
+    estimated: true,
+    source: 'smart_compaction',
+    phase: 'generating_summary',
+  });
+
+  expect(resolveExtensionUiContextUsage('extension_ui_status', { key: 'other', text: '{}' })).toBeNull();
+  expect(resolveExtensionUiContextUsage('extension_ui_status', { key: 'context_usage', text: '{nope' })).toBeNull();
+  expect(resolveExtensionUiContextUsage('extension_ui_working', { key: 'context_usage', text: '{}' })).toBeNull();
 });
 
 test('resolveExtensionUiToast maps notify and error events to expected toast payloads', () => {
