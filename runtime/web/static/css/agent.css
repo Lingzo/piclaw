@@ -429,12 +429,18 @@
     opacity: 1;
 }
 
-.agent-thinking[data-panel-key="thought"][data-expanded="true"] .agent-thinking-body-collapsible {
+.agent-thinking[data-panel-key="thought"][data-expanded="true"] .agent-thinking-body-collapsible,
+.agent-thinking[data-panel-key="draft"][data-expanded="true"] .agent-thinking-body-collapsible,
+.agent-thinking[data-panel-key="tool-output"] .agent-thinking-body-collapsible {
     max-height: min(52vh, 34rem);
     overflow: hidden auto;
     overscroll-behavior: contain;
     padding-right: 0.35rem;
     scrollbar-gutter: stable;
+}
+
+.agent-thinking[data-panel-key="tool-output"] .agent-thinking-body-collapsible {
+    max-height: min(34vh, 22rem);
 }
 
 .agent-thinking-body,

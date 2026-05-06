@@ -135,11 +135,14 @@ afterEach(() => {
   (globalThis as any).Element = originalElement;
 });
 
-test('expanded thought panels keep a constrained scroll container', () => {
+test('expanded thought, draft, and live tool-output panels keep constrained scroll containers', () => {
   const css = readFileSync(join(import.meta.dir, '../../web/static/css/agent.css'), 'utf8');
   expect(css).toContain('.agent-thinking[data-panel-key="thought"][data-expanded="true"] .agent-thinking-body-collapsible');
+  expect(css).toContain('.agent-thinking[data-panel-key="draft"][data-expanded="true"] .agent-thinking-body-collapsible');
+  expect(css).toContain('.agent-thinking[data-panel-key="tool-output"] .agent-thinking-body-collapsible');
   expect(css).toContain('overflow: hidden auto;');
   expect(css).toContain('max-height: min(52vh, 34rem);');
+  expect(css).toContain('max-height: min(34vh, 22rem);');
 });
 
 test('AgentStatus can toggle between hidden and visible renders without hook-order failures', async () => {
