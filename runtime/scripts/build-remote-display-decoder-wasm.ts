@@ -13,26 +13,26 @@ const ASC_BIN_CANDIDATES = [
   resolve(PROJECT_DIR, "../node_modules/.bin/asc.cmd"),
   resolve(PROJECT_DIR, "../node_modules/.bin/asc.ps1"),
 ];
+const ASC_JS = resolve(PROJECT_DIR, "../node_modules/assemblyscript/bin/asc.js");
 const LOG_PREFIX = "[vendor:remote-display-decoder]";
 
 function sha256ForFile(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-function resolveAscBin(): string {
+function resolveAscCommand(): string[] {
   const found = ASC_BIN_CANDIDATES.find((candidate) => existsSync(candidate));
-  if (!found) {
-    throw new Error(`${LOG_PREFIX} Missing asc compiler at ${ASC_BIN_CANDIDATES.join(" or ")}. Run bun install first.`);
-  }
-  return found;
+  if (found) return [found];
+  if (existsSync(ASC_JS)) return ["bun", ASC_JS];
+  throw new Error(`${LOG_PREFIX} Missing asc compiler at ${[...ASC_BIN_CANDIDATES, ASC_JS].join(" or ")}. Run bun install first.`);
 }
 
 function main(): void {
-  const ascBin = resolveAscBin();
+  const ascCommand = resolveAscCommand();
   mkdirSync(dirname(OUTPUT_FILE), { recursive: true });
 
   const proc = Bun.spawnSync([
-    ascBin,
+    ...ascCommand,
     SOURCE_FILE,
     "--target", "release",
     "--runtime", "incremental",
