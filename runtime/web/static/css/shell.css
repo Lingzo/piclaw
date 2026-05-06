@@ -157,6 +157,10 @@
     stroke: color-mix(in srgb, var(--accent-color) 58%, var(--text-secondary) 42%);
 }
 
+.system-meters-row.vram .system-meters-spark path {
+    stroke: color-mix(in srgb, var(--accent-color) 62%, #8b5cf6 38%);
+}
+
 @media (max-width: 900px) {
     .chat-window-header {
         flex-wrap: wrap;
