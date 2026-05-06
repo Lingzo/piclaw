@@ -10,7 +10,7 @@ import {
   readStoredMetersEnabled,
   toggleMetersCollapsed,
 } from '../../web/src/ui/meters.ts';
-import { buildCompactMetersSummary, buildSparklinePath, formatBytesCompact, resolveCurrentRssBytes, shouldShowRss } from '../../web/src/components/system-meters-hud.ts';
+import { buildCompactMetersSummary, buildSparklinePath, formatBytesCompact, resolveCurrentRssBytes, shouldShowRss, shouldShowVram } from '../../web/src/components/system-meters-hud.ts';
 
 const originalWindow = globalThis.window;
 
@@ -71,6 +71,17 @@ test('buildCompactMetersSummary uses fat bullet separators and includes Linux bu
     swap_percent: 7,
     swap_total_bytes: 1024,
   })).toBe('CPU 18% • RAM 62% • BUF 512M • SWP 7%');
+  expect(buildCompactMetersSummary({
+    cpu_percent: 18,
+    ram_percent: 62,
+    buffer_cache_bytes: null,
+    vram_percent: 33,
+    vram_total_bytes: 8 * 1024 * 1024 * 1024,
+    vram_used_bytes: 3 * 1024 * 1024 * 1024,
+    vram_series: [25, 33],
+    swap_percent: null,
+    swap_total_bytes: 0,
+  })).toBe('CPU 18% • RAM 62% • VRAM 33%');
   expect(buildCompactMetersSummary({ cpu_percent: 18, ram_percent: 62, buffer_cache_bytes: null, swap_percent: null, swap_total_bytes: 0 })).toBe('CPU 18% • RAM 62%');
 });
 
@@ -111,6 +122,34 @@ test('shouldShowRss allows Windows and macOS resident-memory meters when RSS dat
     platform: 'win32',
     process_memory: { vm_rss_bytes: null, rss_bytes: 300 },
     process_rss_series_bytes: [],
+  })).toBe(false);
+});
+
+test('shouldShowVram requires valid optional GPU memory telemetry', () => {
+  expect(shouldShowVram({
+    vram_percent: 50,
+    vram_total_bytes: 8 * 1024 * 1024 * 1024,
+    vram_used_bytes: 4 * 1024 * 1024 * 1024,
+    vram_series: [25, 50],
+    gpu_provider: 'nvidia-smi',
+  })).toBe(true);
+  expect(shouldShowVram({
+    vram_percent: null,
+    vram_total_bytes: 8 * 1024 * 1024 * 1024,
+    vram_used_bytes: 4 * 1024 * 1024 * 1024,
+    vram_series: [25, 50],
+  })).toBe(false);
+  expect(shouldShowVram({
+    vram_percent: 50,
+    vram_total_bytes: 0,
+    vram_used_bytes: 0,
+    vram_series: [50],
+  })).toBe(false);
+  expect(shouldShowVram({
+    vram_percent: 50,
+    vram_total_bytes: 8 * 1024 * 1024 * 1024,
+    vram_used_bytes: 4 * 1024 * 1024 * 1024,
+    vram_series: [],
   })).toBe(false);
 });
 
