@@ -11,7 +11,6 @@ The same workflow also builds portable YOLO upgrade artifacts and attaches them 
 
 - `piclaw-<version>-linux-x64.run`
 - `piclaw-<version>-linux-arm64.run`
-- `piclaw-<version>-macos-x64.tar.gz`
 - `piclaw-<version>-macos-arm64.tar.gz`
 - `piclaw-<version>-windows-x64.zip`
 
@@ -21,7 +20,6 @@ The workflow also publishes the experimental Electrobun desktop shell for each r
 
 - `piclaw-<version>-linux-x64-experimental.tar.gz`
 - `piclaw-<version>-linux-arm64-experimental.tar.gz`
-- `piclaw-<version>-macos-x64-experimental.tar.gz`
 - `piclaw-<version>-macos-arm64-experimental.tar.gz`
 - `piclaw-<version>-windows-x64-experimental.zip`
 
