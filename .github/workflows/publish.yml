@@ -434,87 +434,108 @@ jobs:
               }
             }
 
-  # GitHub-native cleanup boundary: workflow-run pruning remains in YAML for the
-  # same reason as release/tag pruning — it is only meaningful inside Actions.
-  cleanup:
-    name: Cleanup old runs and tags
+  # GitHub-native cleanup boundary: Actions run/artifact pruning remains in YAML
+  # because it depends directly on GitHub Actions REST APIs and the release graph.
+  cleanup-actions-history:
+    name: Cleanup Actions runs and artifacts
     runs-on: ubuntu-latest
-    needs: merge
+    needs: publish-portable-assets
     permissions:
-      contents: write
+      contents: read
       actions: write
 
     steps:
-      - name: Cleanup old workflow runs and tags
+      - name: Delete Actions runs and artifacts older than the last 5 releases
         uses: actions/github-script@v9
         with:
           script: |
-            const keepWorkflowRuns = 5;
-            const keepTags = 15;
+            const keepReleaseCount = 5;
             const { owner, repo } = context.repo;
+            const currentRunId = context.runId;
 
-            // Keep only the newest workflow runs for this workflow
-            core.info('Fetching workflow runs...');
-            const workflow_id = 'publish.yml';
-            const runs = await github.paginate(
-              github.rest.actions.listWorkflowRuns,
-              {
-                owner,
-                repo,
-                workflow_id,
-                per_page: 100
-              }
+            core.info(`Resolving cutoff from the latest ${keepReleaseCount} releases...`);
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+
+            const sortedReleases = releases
+              .filter((release) => !release.draft && release.created_at)
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            if (sortedReleases.length === 0) {
+              core.info('No releases found; skipping Actions history cleanup.');
+              return;
+            }
+
+            const keptReleases = sortedReleases.slice(0, keepReleaseCount);
+            const cutoffRelease = keptReleases[keptReleases.length - 1];
+            const cutoff = new Date(cutoffRelease.created_at);
+            core.info(
+              `Keeping Actions history from ${cutoff.toISOString()} onward ` +
+              `(oldest kept release: ${cutoffRelease.tag_name || cutoffRelease.name || cutoffRelease.id}).`
             );
 
-            const sortedRuns = runs.sort((a, b) =>
-              new Date(b.created_at) - new Date(a.created_at)
-            );
-            const runsToDelete = sortedRuns.slice(keepWorkflowRuns);
+            core.info('Fetching workflow runs across all workflows...');
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+              owner,
+              repo,
+              per_page: 100,
+            });
 
-            core.info(`Found ${runs.length} workflow runs, keeping ${keepWorkflowRuns} newest, deleting ${runsToDelete.length} older...`);
+            const runsToDelete = runs.filter((run) => {
+              if (run.id === currentRunId) return false;
+              if (run.status !== 'completed') return false;
+              const createdAt = new Date(run.created_at);
+              return Number.isFinite(createdAt.valueOf()) && createdAt < cutoff;
+            });
+
+            core.info(
+              `Found ${runs.length} workflow runs; deleting ${runsToDelete.length} completed run(s) older than cutoff.`
+            );
             for (const run of runsToDelete) {
-              core.info(`Deleting run #${run.run_number} from ${run.created_at}`);
+              core.info(`Deleting workflow run #${run.run_number} (${run.name || run.workflow_id}) from ${run.created_at}`);
               try {
                 await github.rest.actions.deleteWorkflowRun({
                   owner,
                   repo,
-                  run_id: run.id
+                  run_id: run.id,
                 });
               } catch (error) {
-                core.warning(`Failed to delete run ${run.id}: ${error.message}`);
+                core.warning(`Failed to delete workflow run ${run.id}: ${error.message}`);
               }
             }
 
-            // Keep at least the newest 15 tags (plus current)
-            core.info('Fetching tags...');
-            const tags = await github.paginate(
-              github.rest.repos.listTags,
-              {
-                owner,
-                repo,
-                per_page: 100
-              }
+            core.info('Fetching Actions artifacts...');
+            const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+
+            const artifactsToDelete = artifacts.filter((artifact) => {
+              const createdAt = new Date(artifact.created_at);
+              return Number.isFinite(createdAt.valueOf()) && createdAt < cutoff;
+            });
+
+            core.info(
+              `Found ${artifacts.length} Actions artifacts; deleting ${artifactsToDelete.length} artifact(s) older than cutoff.`
             );
-
-            const currentTag = context.ref.replace('refs/tags/', '');
-            const otherTags = tags.filter(tag => tag.name !== currentTag);
-            const tagsToDelete = otherTags.slice(keepTags);
-
-            core.info(`Found ${tags.length} tags, keeping ${keepTags} newest (plus current: ${currentTag}), deleting ${tagsToDelete.length} older...`);
-            for (const tag of tagsToDelete) {
-              core.info(`Deleting tag ${tag.name}`);
+            for (const artifact of artifactsToDelete) {
+              core.info(`Deleting artifact ${artifact.name} (id ${artifact.id}) from ${artifact.created_at}`);
               try {
-                await github.rest.git.deleteRef({
+                await github.rest.actions.deleteArtifact({
                   owner,
                   repo,
-                  ref: `tags/${tag.name}`
+                  artifact_id: artifact.id,
                 });
               } catch (error) {
-                core.warning(`Failed to delete tag ${tag.name}: ${error.message}`);
+                core.warning(`Failed to delete artifact ${artifact.id}: ${error.message}`);
               }
             }
 
-            core.info('Cleanup completed');
+            core.info('Actions history cleanup completed.');
 
   # GitHub-native cleanup boundary: GHCR package pruning remains in `github-script`
   # because it uses GitHub package APIs directly and is not meaningfully reusable

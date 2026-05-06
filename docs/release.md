@@ -109,6 +109,7 @@ Boundary note:
 - publish smoke is intentionally repo-owned (`make publish-smoke`)
 - release/tag/workflow/package pruning remains GitHub-native in `.github/workflows/publish.yml`
   because it depends directly on Actions context and GitHub APIs
+- Actions workflow runs and Actions artifacts are pruned after release publishing using the oldest timestamp among the latest 5 GitHub releases as the retention cutoff
 
 ## Release naming
 
