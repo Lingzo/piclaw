@@ -173,3 +173,15 @@ export function getRegisteredRoutes(): Array<{ prefix: string; extensionPath: st
 // Also expose registerToolStatusHintProvider for addon extensions
 import { registerToolStatusHintProvider } from "../../../tool-status-hints.js";
 (globalThis as any).__piclaw_registerToolStatusHintProvider = registerToolStatusHintProvider;
+
+// Expose tree widget HTML provider registration for addons (used by session-tree addon).
+// When an addon calls this, /tree emits an HTML dashboard widget instead of plain text.
+let _treeWidgetHtmlProvider: ((leafId: string, chatJid: string) => string) | null = null;
+export function getTreeWidgetHtmlProvider(): ((leafId: string, chatJid: string) => string) | null {
+  return _treeWidgetHtmlProvider;
+}
+(globalThis as any).__piclaw_registerTreeWidgetHtml = (
+  fn: (leafId: string, chatJid: string) => string
+): void => {
+  _treeWidgetHtmlProvider = fn;
+};
