@@ -647,13 +647,19 @@ function handleSystemThemeChange() {
     applyThemeState(currentTheme, { persist: false });
 }
 
-export function initTheme() {
-    if (typeof window === 'undefined') return () => {};
+export function reapplyStoredTheme() {
+    if (typeof window === 'undefined') return;
 
     const storedTheme = normalizeThemeName(getLocalStorageItem(THEME_STORAGE_KEY) || 'default');
     const storedTint = (() => { const raw = getLocalStorageItem(TINT_STORAGE_KEY); return raw ? raw.trim() : null; })();
 
     applyThemeState({ theme: storedTheme, tint: storedTint }, { persist: false });
+}
+
+export function initTheme() {
+    if (typeof window === 'undefined') return () => {};
+
+    reapplyStoredTheme();
 
     if (window.matchMedia && !mediaListenerAttached) {
         const media = window.matchMedia('(prefers-color-scheme: dark)');

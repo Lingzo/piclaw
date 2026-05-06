@@ -178,6 +178,34 @@ test('applyThemeFromEvent without chat affinity updates global localStorage keys
   expect(runtime.document.documentElement.dataset.colorTheme).toBe('gotham');
 });
 
+test('reapplyStoredTheme restores CSS variables from localStorage after a page resume repaint', async () => {
+  const runtime = createThemeRuntime();
+  (globalThis as any).window = runtime.window;
+  (globalThis as any).document = runtime.document;
+  (globalThis as any).CustomEvent = class CustomEventStub {
+    type: string;
+    detail: unknown;
+    constructor(type: string, init?: { detail?: unknown }) {
+      this.type = type;
+      this.detail = init?.detail;
+    }
+  };
+
+  runtime.window.localStorage.setItem('piclaw_theme', 'dracula');
+  runtime.window.localStorage.setItem('piclaw_tint', '');
+
+  const theme = await importFresh<typeof import('../../web/src/ui/theme.js')>('../web/src/ui/theme.ts');
+  theme.reapplyStoredTheme();
+  expect(runtime.styleValues.get('--accent-color')).toBe('#bd93f9');
+
+  runtime.styleValues.clear();
+  runtime.document.documentElement.dataset.colorTheme = '';
+
+  theme.reapplyStoredTheme();
+  expect(runtime.styleValues.get('--accent-color')).toBe('#bd93f9');
+  expect(runtime.document.documentElement.dataset.colorTheme).toBe('dracula');
+});
+
 test('theme parser falls back to inline css color when computed-style resolution fails', async () => {
   const runtime = createThemeRuntime();
   runtime.document.body.appendChild = () => {
