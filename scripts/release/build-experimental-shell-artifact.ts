@@ -134,8 +134,11 @@ async function main(): Promise<void> {
   const outputName = `piclaw-${version}-${currentPlatform}-${currentArch}-experimental${artifactExtension(currentPlatform)}`;
   const outputPath = join(options.outputDir, outputName);
 
-  mkdirSync(options.outputDir, { recursive: true });
+  // Electrobun clears/recreates the repo-level artifacts directory during its
+  // build, so create the release output directory after the shell build has
+  // finished. Otherwise tar/zip can fail because artifacts/release vanished.
   run("bun", ["run", "build:desktop:stable"]);
+  mkdirSync(options.outputDir, { recursive: true });
 
   const buildDir = findBuildDir(currentPlatform, currentArch);
   const shellRoot = findShellRoot(buildDir);
