@@ -454,6 +454,7 @@ const groupDefinitions: GroupDefinition[] = [
           "markdown-math-rendering.test.ts",
           "oobe-panel.test.ts",
           "post-copy-markdown.test.ts",
+          "post-large-code-block.test.ts",
           "post-recovery-chip.test.ts",
           "post-runtime-safety.test.ts",
           "post-peer-message.test.ts",

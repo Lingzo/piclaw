@@ -156,6 +156,7 @@ function formatElapsed(isoString, nowMs = Date.now()) {
 export function AgentStatus({ status, draft, plan, thought, pendingRequest, intent, extensionPanels = [], pendingPanelActions = new Set(), onExtensionPanelAction, turnId, steerQueued, onPanelToggle, showCorePanels = true, showExtensionPanels = true }) {
     const THOUGHT_MAX_LINES = 8;
     const DRAFT_MAX_LINES = 8;
+    const TOOL_OUTPUT_MAX_LINES = 5;
 
     const normalizePreview = (value) => {
         if (!value) return { text: '', totalLines: 0, fullText: '' };
@@ -812,7 +813,7 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
                 text: toolOutputInfo.text,
                 fullText: toolOutputInfo.fullText,
                 totalLines: toolOutputInfo.totalLines,
-                maxLines: 8,
+                maxLines: TOOL_OUTPUT_MAX_LINES,
                 titleClass: 'tool-output',
                 panelKey: 'tool-output',
             })}

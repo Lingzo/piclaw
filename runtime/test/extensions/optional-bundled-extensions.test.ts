@@ -53,24 +53,6 @@ function createFakeApi(): { api: ExtensionAPI; state: FakeState } {
   return { api, state };
 }
 
-function withRouteCapture<T>(state: FakeState, fn: () => Promise<T>): Promise<T> {
-  const previous = (globalThis as any).__piclaw_registerRoute;
-  (globalThis as any).__piclaw_registerRoute = (prefix: string, _handler: unknown, extensionDir: string) => {
-    const key = `${prefix}::${extensionDir}`;
-    const count = (state.routeRegistrations.get(key) ?? 0) + 1;
-    state.routeRegistrations.set(key, count);
-    if (count === 1) {
-      state.routes.push({ prefix, extensionDir });
-      return "created";
-    }
-    return "updated";
-  };
-  return fn().finally(() => {
-    if (previous === undefined) delete (globalThis as any).__piclaw_registerRoute;
-    else (globalThis as any).__piclaw_registerRoute = previous;
-  });
-}
-
 describe("bundled optional extensions", () => {
   test("bun-runner registers the bun_run tool", async () => {
     const { default: registerBunRunner } = await import("../../extensions/integrations/bun-runner/index.ts");

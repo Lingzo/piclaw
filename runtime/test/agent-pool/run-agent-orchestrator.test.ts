@@ -176,7 +176,11 @@ test("runAgentPrompt clears live SSH tool redirection at turn end", async () => 
 test("runAgentPrompt emits turn-aware observability log metadata for turn and tool steps", async () => {
   class StubSession {
     private listeners: Array<(event: any) => void> = [];
-    sessionManager = { getLeafId: () => "leaf-obs" };
+    sessionManager = {
+      getLeafId: () => "leaf-obs",
+      buildSessionContext: () => ({ messages: [{ role: "user", content: [{ type: "text", text: "context" }] }] }),
+    };
+    model = { provider: "openai", id: "gpt-test", contextWindow: 1000 };
     isStreaming = false;
     isCompacting = false;
     isRetrying = false;
@@ -203,6 +207,7 @@ test("runAgentPrompt emits turn-aware observability log metadata for turn and to
 
   const session = new StubSession();
   const logs: Array<Record<string, unknown>> = [];
+  const contextEvents: any[] = [];
   const turnCoordinator = new AgentTurnCoordinator({
     takeAttachments: () => [],
     touchSession: () => {},
@@ -212,6 +217,9 @@ test("runAgentPrompt emits turn-aware observability log metadata for turn and to
   const result = await runAgentPrompt("test", "web:default", {
     timeoutMs: 0,
     turnId: "turn-obs-1",
+    onEvent: (event) => {
+      if (event.type === "context_usage_update") contextEvents.push(event);
+    },
   }, {
     getOrCreateRuntime: async () => createRuntime(session) as any,
     turnCoordinator,
@@ -232,6 +240,13 @@ test("runAgentPrompt emits turn-aware observability log metadata for turn and to
     expect.objectContaining({ operation: "run_agent.prompt_resolved", turnId: "turn-obs-1", sessionLeafId: "leaf-obs" }),
     expect.objectContaining({ operation: "run_agent.complete", turnId: "turn-obs-1", sessionLeafId: "leaf-obs" }),
   ]));
+  expect(contextEvents.map((event) => event.phase)).toEqual(expect.arrayContaining([
+    "prompt_start",
+    "message_end",
+    "tool_execution_start",
+    "mid_turn_tool_result",
+  ]));
+  expect(contextEvents.every((event) => event.contextWindow === 1000 && typeof event.tokens === "number")).toBe(true);
 });
 
 test("runAgentPrompt aggregates deltas and returns pending attachments", async () => {
@@ -692,6 +707,129 @@ test("runAgentPrompt suppresses auto-compaction for chats under backoff after re
     expect(secondResult.result).toBe("second");
     expect(secondSession.calls).toEqual(["prompt"]);
     expect(compactionEvents).toEqual(["compaction_suppressed"]);
+  } finally {
+    restoreEnv();
+  }
+});
+
+test("runAgentPrompt does not enter compaction backoff for cancellation", async () => {
+  const chatJid = `web:compaction-cancel-${Date.now()}`;
+  const db = await import("../../src/db.js");
+  db.initDatabase();
+
+  class CancellingSession {
+    calls: string[] = [];
+    private listeners: Array<(event: any) => void> = [];
+    sessionManager = {
+      getLeafId: () => "leaf-1",
+      buildSessionContext: () => ({ messages: [{ role: "user", content: "x".repeat(200) }] }),
+    };
+    settingsManager = {
+      getCompactionSettings: () => ({ ...DEFAULT_COMPACTION_SETTINGS, enabled: true, reserveTokens: 10 }),
+    };
+    model = { contextWindow: 20, provider: "test", id: "model" };
+    isStreaming = false;
+    isCompacting = false;
+    isRetrying = false;
+    subscribe(listener: (event: any) => void) {
+      this.listeners.push(listener);
+      return () => {
+        this.listeners = this.listeners.filter((entry) => entry !== listener);
+      };
+    }
+    async compact() {
+      this.calls.push("compact");
+      throw new Error("Compaction cancelled");
+    }
+    async prompt() {
+      this.calls.push("prompt");
+      for (const listener of this.listeners) {
+        listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "ok" } });
+      }
+    }
+    async abort() {}
+  }
+
+  const session = new CancellingSession();
+  const result = await runAgentPrompt("test", chatJid, { timeoutMs: 0 }, {
+    getOrCreateRuntime: async () => createRuntime(session) as any,
+    turnCoordinator: new AgentTurnCoordinator({ takeAttachments: () => [], touchSession: () => {}, recordMessageUsage: () => {} }),
+    clearAttachments: () => {},
+    takeAttachments: () => [],
+    logsDir: createTestLogsDir(),
+    setActiveForkBaseLeaf: () => {},
+    clearActiveForkBaseLeaf: () => {},
+  });
+
+  expect(result.status).toBe("success");
+  expect(result.result).toBe("ok");
+  expect(session.calls).toEqual(["compact", "prompt"]);
+  expect(db.getChatCompactionBackoff(chatJid)).toBeNull();
+});
+
+test("runAgentPrompt clears stale cancellation backoff and retries compaction", async () => {
+  const restoreEnv = setEnv({
+    PICLAW_COMPACTION_BACKOFF_BASE_MS: "600000",
+    PICLAW_COMPACTION_BACKOFF_MAX_MS: "600000",
+  });
+  const chatJid = `web:compaction-cancel-backoff-${Date.now()}`;
+  const db = await import("../../src/db.js");
+  db.initDatabase();
+  db.setChatCompactionBackoff(chatJid, {
+    failureCount: 1,
+    lastFailedAt: new Date(Date.now() - 1000).toISOString(),
+    backoffUntil: new Date(Date.now() + 600_000).toISOString(),
+    lastErrorMessage: "Compaction cancelled",
+  });
+
+  class StubSession {
+    calls: string[] = [];
+    private listeners: Array<(event: any) => void> = [];
+    sessionManager = {
+      getLeafId: () => "leaf-1",
+      buildSessionContext: () => ({ messages: [{ role: "user", content: "x".repeat(200) }] }),
+    };
+    settingsManager = {
+      getCompactionSettings: () => ({ ...DEFAULT_COMPACTION_SETTINGS, enabled: true, reserveTokens: 10 }),
+    };
+    model = { contextWindow: 20, provider: "test", id: "model" };
+    isStreaming = false;
+    isCompacting = false;
+    isRetrying = false;
+    subscribe(listener: (event: any) => void) {
+      this.listeners.push(listener);
+      return () => {
+        this.listeners = this.listeners.filter((entry) => entry !== listener);
+      };
+    }
+    async compact() {
+      this.calls.push("compact");
+    }
+    async prompt() {
+      this.calls.push("prompt");
+      for (const listener of this.listeners) {
+        listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "ok" } });
+      }
+    }
+    async abort() {}
+  }
+
+  try {
+    const session = new StubSession();
+    const result = await runAgentPrompt("test", chatJid, { timeoutMs: 0 }, {
+      getOrCreateRuntime: async () => createRuntime(session) as any,
+      turnCoordinator: new AgentTurnCoordinator({ takeAttachments: () => [], touchSession: () => {}, recordMessageUsage: () => {} }),
+      clearAttachments: () => {},
+      takeAttachments: () => [],
+      logsDir: createTestLogsDir(),
+      setActiveForkBaseLeaf: () => {},
+      clearActiveForkBaseLeaf: () => {},
+    });
+
+    expect(result.status).toBe("success");
+    expect(result.result).toBe("ok");
+    expect(session.calls).toEqual(["compact", "prompt"]);
+    expect(db.getChatCompactionBackoff(chatJid)).toBeNull();
   } finally {
     restoreEnv();
   }

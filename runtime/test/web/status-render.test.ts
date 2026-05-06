@@ -143,6 +143,15 @@ test('expanded thought, draft, and live tool-output panels keep constrained scro
   expect(css).toContain('overflow: hidden auto;');
   expect(css).toContain('max-height: min(52vh, 34rem);');
   expect(css).toContain('max-height: min(34vh, 22rem);');
+  expect(css).toContain('.agent-thinking[data-panel-key="tool-output"] .agent-thinking-body');
+  expect(css).toContain('font-family: var(--font-mono, monospace);');
+  expect(css).toContain('font-size: 11px;');
+});
+
+test('tool output panel keeps a tighter 5-line collapsed preview cap', () => {
+  const source = readFileSync(join(import.meta.dir, '../../web/src/components/status.ts'), 'utf8');
+  expect(source).toContain('const TOOL_OUTPUT_MAX_LINES = 5;');
+  expect(source).toContain('maxLines: TOOL_OUTPUT_MAX_LINES');
 });
 
 test('AgentStatus can toggle between hidden and visible renders without hook-order failures', async () => {

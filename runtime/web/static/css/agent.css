@@ -443,6 +443,12 @@
     max-height: min(34vh, 22rem);
 }
 
+.agent-thinking[data-panel-key="tool-output"] .agent-thinking-body,
+.agent-thinking[data-panel-key="tool-output"] .agent-thinking-body * {
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+}
+
 .agent-thinking-body,
 .agent-thinking-body * {
     line-height: 1.35;
