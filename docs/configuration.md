@@ -305,7 +305,7 @@ There are two ways to enable it:
    - `ssh { action: "get" }`
    - `ssh { action: "clear" }`
 
-The `ssh` tool stores chat-scoped profiles in SQLite and applies them immediately to live sessions when possible. That means the agent can switch a chat from local → remote → local again in the same turn/session without recreating the session runtime.
+The `ssh` tool stores chat-scoped profiles in SQLite and applies them immediately to live sessions when possible. That means the agent can switch a chat from local → remote → local again in the same turn without recreating the session runtime. Live SSH redirection is automatically cleared at the end of each agent turn; the stored profile remains available for later inspection or re-application.
 
 ### Required key material
 
@@ -337,6 +337,7 @@ The SSH backend keeps the same remote-tool semantics as the packaged SSH extensi
 - persistent remote shell/session reuse across tool calls
 - remote cwd/home mapping from the configured target path
 - immediate live switching when the chat already has a warm session
+- automatic live-redirection cleanup at the end of each agent turn, so the next turn starts with local core tools unless SSH is re-applied
 
 If a chat has no stored SSH profile, core tools run locally as usual.
 

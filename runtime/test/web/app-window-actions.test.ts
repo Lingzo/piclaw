@@ -8,6 +8,7 @@ import {
 } from '../../web/src/ui/app-window-actions.js';
 
 const originalWindow = globalThis.window;
+const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   if (originalWindow === undefined) {
@@ -15,6 +16,7 @@ afterEach(() => {
   } else {
     globalThis.window = originalWindow;
   }
+  globalThis.fetch = originalFetch;
 });
 
 test('createSessionFromCompose navigates immediately to the branch-loader route', async () => {
@@ -72,6 +74,35 @@ test('createRootSessionFromCompose creates and navigates to an independent root'
   expect(refreshes.sort()).toEqual(['active', 'branches']);
   expect(toasts).toContainEqual(['Root session created', 'Switched to @ops-room.', 'info', 2500]);
   expect(navigateCalls[0]).toBe('https://example.test/?chat_jid=web%3Aops-room&chat_only=1');
+});
+
+test('createRootSessionFromCompose falls back to the API helper when the injected service is missing', async () => {
+  const navigateCalls: string[] = [];
+  const requests: Array<{ url: string; body: any }> = [];
+
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    requests.push({ url, body: JSON.parse(String(init?.body || '{}')) });
+    return new Response(JSON.stringify({
+      status: 'ok',
+      branch: { chat_jid: 'web:api-root', agent_name: 'api-root' },
+    }), {
+      status: 201,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as any;
+
+  const created = await createRootSessionFromCompose({
+    rootName: 'API Root',
+    chatOnlyMode: false,
+    refreshActiveChatAgents: async () => {},
+    refreshCurrentChatBranches: async () => {},
+    navigate: (url: string) => navigateCalls.push(url),
+    baseHref: 'https://example.test/?chat_jid=web%3Adefault',
+  });
+
+  expect(created).toBe(true);
+  expect(requests).toEqual([{ url: '/agent/root-session', body: { agent_name: 'API Root' } }]);
+  expect(navigateCalls[0]).toBe('https://example.test/?chat_jid=web%3Aapi-root');
 });
 
 test('popOutPane transfers pane state and closes the source tab after navigation', async () => {

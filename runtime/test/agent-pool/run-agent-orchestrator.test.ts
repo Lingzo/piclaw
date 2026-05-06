@@ -12,6 +12,13 @@ import { getAttachmentRegistry } from "../../src/agent-pool/attachments.js";
 import { AgentTurnCoordinator } from "../../src/agent-pool/turn-coordinator.js";
 import { createToolExecutionWatchdogHeartbeatController, runAgentPrompt } from "../../src/agent-pool/run-agent-orchestrator.js";
 import { getToolUseMessageBudget, setToolUseMessageBudget } from "../../src/core/config.js";
+import {
+  applyLiveSshConfig,
+  hasLiveChatSshConnection,
+  registerLiveChatSshSession,
+  setSshConnectionResolverForTests,
+  unregisterLiveChatSshSession,
+} from "../../src/extensions/ssh-core.js";
 import { setEnv } from "../helpers.js";
 
 function createRuntime(session: any, retrySettings?: { enabled?: boolean; maxRetries?: number; baseDelayMs?: number; maxDelayMs?: number }): AgentSessionRuntime {
@@ -47,6 +54,7 @@ function createTestLogsDir(): string {
 }
 
 afterEach(() => {
+  setSshConnectionResolverForTests(null);
   while (tempLogsDirs.length > 0) {
     const logsDir = tempLogsDirs.pop();
     if (!logsDir) continue;
@@ -97,6 +105,73 @@ function createAssistantMessage(text: string) {
     timestamp: Date.now(),
   } as const;
 }
+
+test("runAgentPrompt clears live SSH tool redirection at turn end", async () => {
+  const chatJid = "web:ssh-turn-scope";
+  class StubSession {
+    private listeners: Array<(event: any) => void> = [];
+    sessionManager = { getLeafId: () => "leaf-ssh" };
+    model = { provider: "openai", id: "gpt-test", contextWindow: 1000 };
+    isStreaming = false;
+    isCompacting = false;
+    isRetrying = false;
+    subscribe(listener: (event: any) => void) {
+      this.listeners.push(listener);
+      return () => {
+        this.listeners = this.listeners.filter((entry) => entry !== listener);
+      };
+    }
+    async prompt() {
+      for (const listener of this.listeners) {
+        listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "done" } });
+        listener({ type: "message_update", assistantMessageEvent: { type: "message_end", message: createAssistantMessage("done") } });
+      }
+      return createAssistantMessage("done");
+    }
+  }
+
+  setSshConnectionResolverForTests(async (_rawTarget, localCwd, localHome, port) => ({
+    sshTarget: "agent@example.com",
+    port,
+    remoteCwd: "/srv/project",
+    remoteHome: "/home/agent",
+    localCwd,
+    localHome,
+    privateKeyPath: "/tmp/test-key",
+    controlPath: "/tmp/test-control",
+    strictHostKeyChecking: "yes",
+    tempDir: "/tmp/piclaw-ssh-test",
+  }) as any);
+
+  await registerLiveChatSshSession(chatJid, { localCwd: "/workspace", localHome: "/home/agent" });
+  await applyLiveSshConfig(chatJid, {
+    target: "agent@example.com:/srv/project",
+    port: 22,
+    privateKeyKeychain: "ssh/piclaw",
+    strictHostKeyChecking: "yes",
+  });
+  expect(hasLiveChatSshConnection(chatJid)).toBe(true);
+
+  try {
+    const result = await runAgentPrompt("test", chatJid, { timeoutMs: 0 }, {
+      getOrCreateRuntime: async () => createRuntime(new StubSession()) as any,
+      turnCoordinator: new AgentTurnCoordinator({ takeAttachments: () => [], touchSession: () => {}, recordMessageUsage: () => {} }),
+      clearAttachments: () => {},
+      takeAttachments: () => [],
+      logsDir: createTestLogsDir(),
+      setActiveForkBaseLeaf: () => {},
+      clearActiveForkBaseLeaf: () => {},
+      onInfo: () => {},
+      onWarn: () => {},
+      onError: () => {},
+    });
+
+    expect(result.status).toBe("success");
+    expect(hasLiveChatSshConnection(chatJid)).toBe(false);
+  } finally {
+    await unregisterLiveChatSshSession(chatJid);
+  }
+});
 
 test("runAgentPrompt emits turn-aware observability log metadata for turn and tool steps", async () => {
   class StubSession {

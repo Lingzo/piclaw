@@ -11,6 +11,7 @@ import {
   updateSessionStreaming,
   updateSessionModel,
 } from "../extensions/session-status.js";
+import { clearLiveSshConfig } from "../extensions/ssh-core.js";
 
 import {
   decideAutomaticRecovery,
@@ -1192,6 +1193,16 @@ export async function runAgentPrompt(
     if (sessionCtrl && savedToolNames !== null && originalSetActiveToolsByName) {
       sessionCtrl.setActiveToolsByName = originalSetActiveToolsByName;
       originalSetActiveToolsByName(savedToolNames);
+    }
+    try {
+      await clearLiveSshConfig(chatJid);
+    } catch (error) {
+      options.onWarn?.("Failed to clear turn-scoped SSH tool redirection", {
+        operation: "run_agent.ssh_clear_turn_scope",
+        chatJid,
+        error,
+      });
+      debugSuppressedError(log, "Failed to clear turn-scoped SSH tool redirection.", error, { chatJid });
     }
     options.clearActiveForkBaseLeaf(chatJid);
   }

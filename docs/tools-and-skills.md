@@ -266,7 +266,7 @@ You can extend that baseline with `.piclaw/config.json`:
 - `powershell` — Windows-only replacement for the default shell tool; active instead of `bash` on Windows hosts
 - `bun_run` — run a workspace Bun script directly; kept in the default active baseline on Windows so there is still a first-party script runner alongside PowerShell
 - `exit_process` — gracefully terminate piclaw so Supervisor restarts it; kept always active because lifecycle control should not depend on same-turn lazy activation
-- `ssh` — get, set, or clear the session-scoped SSH profile used by remote-backed core tools (`read`, `write`, `edit`, `bash`)
+- `ssh` — get, set, or clear the session-scoped SSH profile used by remote-backed core tools (`read`, `write`, `edit`, `bash`); live redirection is turn-scoped and is cleared automatically at the end of each agent turn
 - `mcp` — token-efficient proxy for external MCP servers via the bundled `pi-mcp-adapter`; supports search, describe, connect, tool calls, and MCP UI message retrieval using shared `.mcp.json` plus optional Pi-owned override config
 
 > **Note:** `proxmox` and `portainer` tools have been moved to the [piclaw-addons](https://github.com/rcarmo/piclaw-addons) repository. When the addons package is installed, these tools are registered automatically. They use the same session-scoped profile + `discover` → `capabilities` → `workflow` pattern as `ssh`.
