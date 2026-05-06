@@ -7,6 +7,13 @@ Pushing a version tag triggers `.github/workflows/publish.yml` and publishes mul
 - `ghcr.io/rcarmo/piclaw:<tag>`
 - `ghcr.io/rcarmo/piclaw:latest`
 
+The same workflow also builds Linux self-extracting YOLO upgrade artifacts and attaches them to the GitHub release:
+
+- `piclaw-<version>-linux-x64.run`
+- `piclaw-<version>-linux-arm64.run`
+
+The `.run` artifacts bundle Bun, Piclaw, built web assets, `skel/`, vendored runtime assets, and production `node_modules` for the target Linux architecture.
+
 ## Cutting a release
 
 The authoritative workflow is documented in the [cut-release skill](/workspace/.pi/skills/cut-release/SKILL.md), which covers:
@@ -41,6 +48,22 @@ git push origin main vX.Y.Z
 ```
 
 Then monitor CI and publish the GitHub release via the API (see skill for details).
+
+Build a local Linux `.run` artifact for the current architecture when you need a manual YOLO bundle smoke test:
+
+```bash
+make portable-linux
+./artifacts/release/piclaw-$(jq -r .version package.json)-linux-$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/').run --extract /tmp/piclaw-run-test
+/tmp/piclaw-run-test/piclaw-$(jq -r .version package.json)-linux-$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')/bin/piclaw --version
+```
+
+Install/upgrade from a release asset on a YOLO Linux host:
+
+```bash
+chmod +x piclaw-<version>-linux-x64.run
+sudo ./piclaw-<version>-linux-x64.run --install /opt/piclaw
+# writes /usr/local/bin/piclaw unless PICLAW_SKIP_BIN_LINK=1 or PICLAW_BIN_DIR is set
+```
 
 Package UX reports as one concatenated PDF plus a data-only ZIP before attaching release assets:
 

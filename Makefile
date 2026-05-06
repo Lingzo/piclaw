@@ -7,6 +7,7 @@
 #   build-piclaw   – Full build: build-web (vendor + bundles) + build-ts.
 #   build-desktop  – Build the optional Electrobun desktop shell.
 #   pack           – Pack piclaw into a .tgz (depends on build-piclaw).
+#   portable-linux – Build a Linux self-extracting .run artifact (depends on build-piclaw).
 #   local-install  – Pack and install globally (no restart).
 #   lint/test      – Run ESLint and bun test suite.
 #   ci-fast        – Run the canonical fast CI guardrails + web build.
@@ -40,7 +41,7 @@ GLOBAL_LOCK := $(BUN_ROOT)/install/global/bun.lock
 PI_AGENT_VERSION ?= $(shell jq -r '.dependencies["@mariozechner/pi-coding-agent"] // "0.58.3"' package.json)
 WEB_BUILD_TEST_TIMEOUT_MS ?= 20000
 
-.PHONY: help up down enter build build-piclaw build-web build-ts build-desktop vendor update-mermaid-vendor pack \
+.PHONY: help up down enter build build-piclaw build-web build-ts build-desktop vendor update-mermaid-vendor pack portable-linux \
         local-install restart lint test test-coverage ci-fast ci-integration install-git-hooks pre-push-ci publish-smoke \
         dual-tag tag-ghcr sync-version bump-minor bump-patch push
 
@@ -135,6 +136,9 @@ pack: build-piclaw ## Pack piclaw into a .tgz (outside the repo)
 	TMPDIR=$(PICLAW_TMPDIR) TMP=$(PICLAW_TMPDIR) TEMP=$(PICLAW_TMPDIR) BUN_TMPDIR=$(PICLAW_TMPDIR) \
 		bun pm pack --destination $(PACK_DIR); \
 	ls -lh $(PACK_DIR)/piclaw-*.tgz || true
+
+portable-linux: build-piclaw ## Build a Linux self-extracting .run artifact for the current architecture
+	bun run release:build-linux-run
 
 restart: ## No-op safety guard: use exit_process from the agent instead of restarting inline
 	@printf '%s\n' "[restart] No-op by design." \
