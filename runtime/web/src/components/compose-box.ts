@@ -539,7 +539,7 @@ function unwrapQueuedTranscriptContent(value) {
             index += 1;
             continue;
         }
-        if (trimmed === 'Messages:' || trimmed.startsWith('Channel:')) {
+        if (trimmed === 'Messages:' || trimmed.startsWith('Channel:') || trimmed.startsWith('Chat:')) {
             sawTranscript = true;
             index += 1;
             continue;
@@ -552,7 +552,7 @@ function unwrapQueuedTranscriptContent(value) {
                 const current = lines[index];
                 const currentTrimmed = current.trim();
                 if (/^[^\n]+\s@\s[^\n]+:$/.test(currentTrimmed)) break;
-                if (currentTrimmed.startsWith('Channel:') || currentTrimmed === 'Messages:') break;
+                if (currentTrimmed.startsWith('Channel:') || currentTrimmed.startsWith('Chat:') || currentTrimmed === 'Messages:') break;
                 bodyLines.push(current.startsWith('  ') ? current.slice(2) : current);
                 index += 1;
             }

@@ -165,6 +165,7 @@ test('resolveComposePrefillRequest applies new non-search prefill tokens exactly
 test('parseQueuedContent extracts file, folder, message, and attachment refs from transcript-wrapped queue items', () => {
   const parsed = parseQueuedContent([
     'Channel: web',
+    'Chat: web:default',
     '',
     'Rui Carmo @ 2026-04-13T08:40:35.008Z:',
     '  Please check this later.',
