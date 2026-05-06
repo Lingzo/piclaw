@@ -7,12 +7,23 @@ Pushing a version tag triggers `.github/workflows/publish.yml` and publishes mul
 - `ghcr.io/rcarmo/piclaw:<tag>`
 - `ghcr.io/rcarmo/piclaw:latest`
 
-The same workflow also builds Linux self-extracting YOLO upgrade artifacts and attaches them to the GitHub release:
+The same workflow also builds portable YOLO upgrade artifacts and attaches them to the GitHub release:
 
 - `piclaw-<version>-linux-x64.run`
 - `piclaw-<version>-linux-arm64.run`
+- `piclaw-<version>-macos-x64.tar.gz`
+- `piclaw-<version>-macos-arm64.tar.gz`
+- `piclaw-<version>-windows-x64.zip`
 
-The `.run` artifacts bundle Bun, Piclaw, built web assets, `skel/`, vendored runtime assets, and production `node_modules` for the target Linux architecture.
+These portable artifacts bundle Bun, Piclaw, built web assets, `skel/`, vendored runtime assets, and production `node_modules` for the target OS/architecture.
+
+The workflow also publishes the experimental Electrobun desktop shell for each release runner with an `-experimental` suffix:
+
+- `piclaw-<version>-linux-x64-experimental.tar.gz`
+- `piclaw-<version>-linux-arm64-experimental.tar.gz`
+- `piclaw-<version>-macos-x64-experimental.tar.gz`
+- `piclaw-<version>-macos-arm64-experimental.tar.gz`
+- `piclaw-<version>-windows-x64-experimental.zip`
 
 ## Cutting a release
 
@@ -49,7 +60,17 @@ git push origin main vX.Y.Z
 
 Then monitor CI and publish the GitHub release via the API (see skill for details).
 
-Build a local Linux `.run` artifact for the current architecture when you need a manual YOLO bundle smoke test:
+Build a local portable artifact for the current architecture when you need a manual YOLO bundle smoke test:
+
+```bash
+make portable       # current OS/arch portable runtime artifact
+make portable-linux # Linux-only .run alias
+make portable-mac   # macOS-only .tar.gz alias
+make portable-windows # Windows-only .zip alias
+make portable-experimental-shell # current OS/arch Electrobun shell artifact with -experimental suffix
+```
+
+Linux smoke-test example:
 
 ```bash
 make portable-linux

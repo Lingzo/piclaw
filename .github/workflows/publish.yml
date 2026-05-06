@@ -100,18 +100,29 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  build-linux-run-artifacts:
-    name: Build Linux .run artifact (${{ matrix.arch }})
+  build-portable-artifacts:
+    name: Build portable artifact (${{ matrix.platform }}-${{ matrix.arch }})
     needs: wait-for-integration
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch: x64
+          - platform: linux
+            arch: x64
             runner: ubuntu-24.04
-          - arch: arm64
+          - platform: linux
+            arch: arm64
             runner: ubuntu-24.04-arm
+          - platform: macos
+            arch: x64
+            runner: macos-13
+          - platform: macos
+            arch: arm64
+            runner: macos-14
+          - platform: windows
+            arch: x64
+            runner: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -124,14 +135,59 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build Linux .run artifact
-        run: make portable-linux
+      - name: Build portable artifact
+        run: bun run release:build-portable
 
-      - name: Upload Linux .run artifact
+      - name: Upload portable artifact
         uses: actions/upload-artifact@v4
         with:
-          name: piclaw-${{ github.ref_name }}-linux-${{ matrix.arch }}-run
-          path: artifacts/release/*.run
+          name: piclaw-${{ github.ref_name }}-${{ matrix.platform }}-${{ matrix.arch }}-portable
+          path: artifacts/release/*
+          if-no-files-found: error
+
+  build-experimental-shell-artifacts:
+    name: Build experimental shell (${{ matrix.platform }}-${{ matrix.arch }})
+    needs: wait-for-integration
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            arch: x64
+            runner: ubuntu-24.04
+          - platform: linux
+            arch: arm64
+            runner: ubuntu-24.04-arm
+          - platform: macos
+            arch: x64
+            runner: macos-13
+          - platform: macos
+            arch: arm64
+            runner: macos-14
+          - platform: windows
+            arch: x64
+            runner: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version-file: BUN_VERSION
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build experimental shell artifact
+        run: bun run release:build-experimental-shell
+
+      - name: Upload experimental shell artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: piclaw-${{ github.ref_name }}-${{ matrix.platform }}-${{ matrix.arch }}-experimental
+          path: artifacts/release/*-experimental.*
           if-no-files-found: error
 
   # Build/push remains workflow-native because it is GitHub-runner-specific Docker orchestration.
@@ -288,17 +344,24 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
 
-  publish-linux-run-assets:
-    name: Publish Linux .run release assets
+  publish-portable-assets:
+    name: Publish portable release assets
     runs-on: ubuntu-latest
-    needs: [merge, build-linux-run-artifacts]
+    needs: [merge, build-portable-artifacts, build-experimental-shell-artifacts]
     permissions:
       contents: write
     steps:
-      - name: Download Linux .run artifacts
+      - name: Download portable artifacts
         uses: actions/download-artifact@v6
         with:
-          pattern: piclaw-${{ github.ref_name }}-linux-*-run
+          pattern: piclaw-${{ github.ref_name }}-*-portable
+          path: artifacts/release
+          merge-multiple: true
+
+      - name: Download experimental shell artifacts
+        uses: actions/download-artifact@v6
+        with:
+          pattern: piclaw-${{ github.ref_name }}-*-experimental
           path: artifacts/release
           merge-multiple: true
 
@@ -310,7 +373,7 @@ jobs:
           set -euo pipefail
           gh release view "$TAG_NAME" >/dev/null 2>&1 || \
             gh release create "$TAG_NAME" --verify-tag --generate-notes --title "PiClaw $TAG_NAME"
-          gh release upload "$TAG_NAME" artifacts/release/*.run --clobber
+          gh release upload "$TAG_NAME" artifacts/release/* --clobber
 
   # GitHub-native cleanup boundary: release/tag pruning stays in workflow-local
   # `github-script` blocks because it depends directly on GitHub Actions context and
@@ -318,7 +381,7 @@ jobs:
   prune-releases:
     name: Prune old releases
     runs-on: ubuntu-latest
-    needs: publish-linux-run-assets
+    needs: publish-portable-assets
     permissions:
       contents: write
     steps:
