@@ -8,6 +8,8 @@
 #   build-desktop  – Build the optional Electrobun desktop shell.
 #   pack           – Pack piclaw into a .tgz (depends on build-piclaw).
 #   portable-linux – Build a Linux self-extracting .run artifact (depends on build-piclaw).
+#   portable-mac/windows – Build platform-native portable artifacts on matching runners.
+#   portable-experimental-shell – Build the Electrobun shell artifact with an -experimental suffix.
 #   local-install  – Pack and install globally (no restart).
 #   lint/test      – Run ESLint and bun test suite.
 #   ci-fast        – Run the canonical fast CI guardrails + web build.
@@ -41,7 +43,7 @@ GLOBAL_LOCK := $(BUN_ROOT)/install/global/bun.lock
 PI_AGENT_VERSION ?= $(shell jq -r '.dependencies["@mariozechner/pi-coding-agent"] // "0.58.3"' package.json)
 WEB_BUILD_TEST_TIMEOUT_MS ?= 20000
 
-.PHONY: help up down enter build build-piclaw build-web build-ts build-desktop vendor update-mermaid-vendor pack portable-linux \
+.PHONY: help up down enter build build-piclaw build-web build-ts build-desktop vendor update-mermaid-vendor pack portable portable-linux portable-mac portable-windows portable-experimental-shell \
         local-install restart lint test test-coverage ci-fast ci-integration install-git-hooks pre-push-ci publish-smoke \
         dual-tag tag-ghcr sync-version bump-minor bump-patch push
 
@@ -137,8 +139,23 @@ pack: build-piclaw ## Pack piclaw into a .tgz (outside the repo)
 		bun pm pack --destination $(PACK_DIR); \
 	ls -lh $(PACK_DIR)/piclaw-*.tgz || true
 
+portable: build-piclaw ## Build the platform-native portable artifact for the current runner
+	bun run release:build-portable
+
 portable-linux: build-piclaw ## Build a Linux self-extracting .run artifact for the current architecture
+	@test "$$(uname -s)" = "Linux" || { echo "portable-linux must run on Linux" >&2; exit 1; }
 	bun run release:build-linux-run
+
+portable-mac: build-piclaw ## Build a macOS portable .tar.gz artifact on a macOS runner
+	@test "$$(uname -s)" = "Darwin" || { echo "portable-mac must run on macOS" >&2; exit 1; }
+	bun run release:build-portable
+
+portable-windows: build-piclaw ## Build a Windows portable .zip artifact on a Windows runner
+	@node -e "process.exit(process.platform === 'win32' ? 0 : 1)" || { echo "portable-windows must run on Windows" >&2; exit 1; }
+	bun run release:build-portable
+
+portable-experimental-shell: ## Build the Electrobun shell artifact for the current runner with an -experimental suffix
+	bun run release:build-experimental-shell
 
 restart: ## No-op safety guard: use exit_process from the agent instead of restarting inline
 	@printf '%s\n' "[restart] No-op by design." \
