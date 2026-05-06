@@ -10,7 +10,7 @@
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { AgentControlCommand, AgentControlResult } from "../agent-control-types.js";
 import { extractTextFromContent, truncateText } from "../agent-control-helpers.js";
-import { getTreeWidgetHtmlProvider } from "../../channels/web/http/extension-routes.js";
+import { getWidgetKindRenderer } from "../../channels/web/http/extension-routes.js";
 
 type TreeCommand = Extract<AgentControlCommand, { type: "tree" }>;
 type LabelCommand = Extract<AgentControlCommand, { type: "label" }>;
@@ -32,10 +32,10 @@ export async function handleTree(session: AgentSession, command: TreeCommand): P
     // If the session-tree addon is loaded, emit an HTML dashboard widget.
     // Otherwise fall back to the legacy session_tree content block (or plain text
     // when session_tree rendering is also removed from core).
-    const htmlProvider = getTreeWidgetHtmlProvider();
-    if (htmlProvider) {
-      const chatJid = session.sessionManager ? (session as any)._chatJid ?? "" : "";
-      const html = htmlProvider(leafId ?? "", chatJid);
+    const renderer = getWidgetKindRenderer("session_tree");
+    if (renderer) {
+      const chatJid = (session as any)._chatJid ?? "";
+      const html = renderer({ leafId: leafId ?? "", chatJid });
       const widgetBlock = {
         type: "generated_widget",
         widget_id: `session-tree-${Date.now()}`,
